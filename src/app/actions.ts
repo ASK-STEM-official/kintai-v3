@@ -92,16 +92,24 @@ export async function getTempRegistration(token: string) {
     return data;
 }
 
-export async function completeRegistration(
-  token: string,
-  formData: { displayName: string; generation: number; teamId: number }
-): Promise<{ success: boolean; message: string }> {
+export async function completeRegistration(formData: FormData) {
+  const token = formData.get('token') as string;
+  const displayName = formData.get('displayName') as string;
+  const generation = Number(formData.get('generation'));
+  const teamId = Number(formData.get('teamId'));
+
+  if (!token || !displayName || !generation || !teamId) {
+    // This should be handled by form validation, but as a safeguard.
+    return redirect(`/register/${token}?error=Missing form data`);
+  }
+
   const supabase = createSupabaseServerClient();
   const adminSupabase = createSupabaseAdminClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.user_metadata.provider_id) {
-    return { success: false, message: "認証されていません。" };
+    // This should not happen if the form is only shown to authenticated users.
+    return redirect(`/register/${token}?error=Not authenticated`);
   }
   
   const { data: tempReg, error: tempRegError } = await adminSupabase
@@ -111,21 +119,21 @@ export async function completeRegistration(
     .single();
 
   if (tempRegError || !tempReg) {
-    return { success: false, message: "無効な登録セッションです。" };
+    return redirect(`/register/${token}?error=Invalid session`);
   }
   if (tempReg.is_used) {
-    return { success: false, message: "この登録セッションは既に使用されています。" };
+    return redirect(`/register/${token}?error=Session already used`);
   }
   if (new Date(tempReg.expires_at) < new Date()) {
-    return { success: false, message: "登録セッションの有効期限が切れています。" };
+    return redirect(`/register/${token}?error=Session expired`);
   }
 
   const userData: TablesInsert<'users'> = {
     id: user.id,
-    display_name: `${formData.displayName}#${Math.floor(1000 + Math.random() * 9000)}`,
+    display_name: `${displayName}#${Math.floor(1000 + Math.random() * 9000)}`,
     discord_id: user.user_metadata.provider_id,
-    generation: formData.generation,
-    team_id: formData.teamId,
+    generation: generation,
+    team_id: teamId,
     card_id: tempReg.card_id,
     role: 0, // Default role
     is_active: true,
@@ -137,11 +145,11 @@ export async function completeRegistration(
     console.error("Error inserting user:", insertUserError);
     if(insertUserError.code === '23505') { // unique violation
       if (insertUserError.details.includes('discord_id')) {
-        return { success: false, message: "このDiscordアカウントは既に登録されています。" };
+        return redirect(`/register/${token}?error=This Discord account is already registered.`);
       }
-       return { success: false, message: "ユーザー登録に失敗しました。表示名が重複している可能性があります。" };
+       return redirect(`/register/${token}?error=Display name might be taken.`);
     }
-    return { success: false, message: `ユーザー登録に失敗しました: ${insertUserError.message}` };
+    return redirect(`/register/${token}?error=${insertUserError.message}`);
   }
   
   await adminSupabase.from('temp_registrations').update({ is_used: true }).eq('id', tempReg.id);
@@ -149,6 +157,7 @@ export async function completeRegistration(
   revalidatePath('/admin');
   redirect(`/register/${token}?success=true`);
 }
+
 
 export async function signInWithDiscord() {
     const supabase = createSupabaseServerClient();
@@ -250,7 +259,7 @@ export async function updateAnnouncement(id: string, data: TablesUpdate<'announc
     const { error } = await supabase.from('announcements').update(data).eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
-    revalidatePath('/');
+revalidatePath('/');
     return { success: true, message: 'お知らせを更新しました。'};
 }
 
