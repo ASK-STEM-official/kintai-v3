@@ -48,7 +48,9 @@ function LoginContent() {
 export default function LoginPage() {
     return (
         <main className="w-full h-screen flex flex-col items-center justify-center bg-background p-4">
-            <LoginContent />
+            <Suspense fallback={<div>Loading...</div>}>
+              <LoginContent />
+            </Suspense>
         </main>
     )
 }
