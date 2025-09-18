@@ -5,10 +5,11 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { recordAttendance, createTempRegistration } from '@/app/actions';
 import { Database } from '@/lib/types';
 import Clock from './Clock';
-import { Bell, CheckCircle2, XCircle, UserPlus, Wifi, WifiOff, Copy, Check } from 'lucide-react';
+import { Bell, CheckCircle2, XCircle, UserPlus, Wifi, WifiOff, Copy, Check, LogIn, LogOut } from 'lucide-react';
 import Image from 'next/image';
 
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing';
+type AttendanceType = 'in' | 'out' | null;
 type Announcement = Database['public']['Tables']['announcements']['Row'] | null;
 type Team = Database['public']['Tables']['teams']['Row'];
 
@@ -29,6 +30,8 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   const [announcement, setAnnouncement] = useState(initialAnnouncement);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [isCopied, setIsCopied] = useState(false);
+  const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
+
 
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -40,10 +43,11 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     setMessage('');
     setSubMessage('');
     setQrToken(null);
+    setAttendanceType(null);
   }, []);
 
   const handleFormSubmit = useCallback(async (cardId: string) => {
-    if (!cardId.trim() || kioskState === 'processing' || kioskState === 'success' || kioskState === 'qr') {
+    if (!cardId.trim() || kioskState === 'processing') {
       setInputValue('');
       return;
     }
@@ -53,7 +57,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     const currentKioskState = kioskState; // Use the state at the moment of submission
     setInputValue(''); 
 
-    if (currentKioskState === 'register' || (currentKioskState === 'input' && (message === '新規カード登録' || subMessage.includes('登録するには')))) {
+    if (currentKioskState === 'register') {
       const result = await createTempRegistration(cardId);
       if (result.success && result.token) {
         setQrToken(result.token);
@@ -68,8 +72,9 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       const result = await recordAttendance(cardId);
       if (result.success && result.user) {
         setKioskState('success');
+        setAttendanceType(result.type);
         const teamName = teams.find(t => t.id === result.user.team_id)?.name || '未設定';
-        setMessage(`${result.user.display_name} (${teamName}・${result.user.generation}期生)`);
+        setMessage(`${result.user.display_name}`);
         setSubMessage(result.message);
       } else {
         setKioskState('error');
@@ -77,7 +82,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
         setSubMessage('登録するには「/」キーを押してください');
       }
     }
-  }, [kioskState, message, subMessage, teams, resetToIdle]);
+  }, [kioskState, teams]);
 
 
   useEffect(() => {
@@ -85,7 +90,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     if (kioskState === 'success' || kioskState === 'error') {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(resetToIdle, AUTO_RESET_DELAY);
-    } else {
+    } else if (kioskState !== 'idle') {
        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     }
     
@@ -97,7 +102,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   
    useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (kioskState === 'processing' || kioskState === 'success' || kioskState === 'qr') {
+      if (kioskState === 'processing' || kioskState === 'qr') {
         if(e.key === 'Escape') resetToIdle();
         return;
       }
@@ -115,6 +120,9 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       }
       
       if (e.key === '/') {
+         if (kioskState === 'success' || kioskState === 'error') {
+            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+         }
         e.preventDefault();
         setKioskState('register');
         setMessage('新規カード登録');
@@ -126,7 +134,9 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       // Allow alphanumeric and some symbols for card IDs
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         setInputValue(prev => prev + e.key);
-        setKioskState('input');
+        if (kioskState !== 'register') {
+           setKioskState('input');
+        }
       }
 
       if (e.key === 'Backspace') {
@@ -238,12 +248,19 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
 
     const handleCopy = (e: React.MouseEvent) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(url).then(() => {
-            setIsCopied(true);
-            setTimeout(() => setIsCopied(false), 2000);
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-        });
+        const urlInput = document.getElementById('qr-url-input') as HTMLInputElement;
+        if (urlInput) {
+            urlInput.select();
+            urlInput.setSelectionRange(0, 99999); // For mobile devices
+            try {
+                // This might fail in non-secure contexts, but selection should still work.
+                document.execCommand('copy');
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+            } catch (err) {
+                console.error('Fallback copy failed: ', err);
+            }
+        }
     };
 
     return (
@@ -259,21 +276,22 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
                 priority
             />
         </div>
-        <div className="relative mt-4 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <input 
-                readOnly
-                value={url}
-                className="bg-gray-800 p-2 pr-10 rounded-md font-mono text-sm w-full border-none text-white"
-            />
-            <button
-                onClick={handleCopy}
-                className="absolute inset-y-0 right-0 flex items-center pr-3"
-            >
-                {isCopied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5 text-gray-400" />}
-            </button>
+        <div 
+          className="relative mt-4 w-full max-w-sm group"
+          onClick={handleCopy}
+        >
+          <input
+            id="qr-url-input"
+            readOnly
+            value={url}
+            className="bg-gray-800 p-2 pr-10 rounded-md font-mono text-sm w-full border-none text-white cursor-pointer select-all"
+          />
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+            {isCopied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5 text-gray-400 group-hover:text-white" />}
+          </div>
         </div>
         
-        <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取るか、URLをコピーして登録を完了してください。</p>
+        <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取るか、URLをクリックしてコピーし登録を完了してください。</p>
         <QrTimer />
         <p className="text-sm text-gray-500 mt-4">※登録完了後、この画面は自動的に戻ります</p>
       </div>
@@ -285,7 +303,11 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       case 'success':
         return (
           <div className="text-center flex flex-col items-center">
-            <CheckCircle2 className="w-32 h-32 text-green-400 mb-8" />
+            {attendanceType === 'in' ? (
+              <LogIn className="w-32 h-32 text-green-400 mb-8" />
+            ) : (
+              <LogOut className="w-32 h-32 text-blue-400 mb-8" />
+            )}
             <p className="text-5xl font-bold">{message}</p>
             <p className="text-3xl text-gray-300 mt-4">{subMessage}</p>
             <p className="text-sm text-gray-500 mt-8">(5秒後に自動的に戻ります)</p>
@@ -314,7 +336,8 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       case 'processing':
          return (
              <div className="text-center flex flex-col items-center">
-                 <p className="text-4xl text-gray-400">処理中...</p>
+                 <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-400"></div>
+                 <p className="text-4xl text-gray-400 mt-8">処理中...</p>
              </div>
          )
       case 'input':
@@ -331,7 +354,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
           {renderState()}
         </div>
         
-        {kioskState === 'input' && (
+        {(kioskState === 'input' || (kioskState === 'register' && inputValue)) && (
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/50 backdrop-blur-sm">
             <div className="w-full max-w-4xl mx-auto text-center">
               <p className="text-lg text-gray-400 mb-2">入力中...</p>

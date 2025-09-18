@@ -188,7 +188,7 @@ export default function AnnouncementsTab({
                 </div>
                 <DialogFooter>
                   <DialogClose asChild>
-                     <Button variant="outline">キャンセル</Button>
+                     <Button variant="outline" type="button">キャンセル</Button>
                   </DialogClose>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? "保存中..." : "保存"}

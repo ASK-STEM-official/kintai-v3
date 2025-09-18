@@ -13,13 +13,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -200,7 +193,7 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                         </div>
                         <DialogFooter>
                             <DialogClose asChild>
-                                <Button variant="outline">キャンセル</Button>
+                                <Button variant="outline" type="button">キャンセル</Button>
                             </DialogClose>
                             <Button type="submit" disabled={isSubmitting}>
                                 {isSubmitting ? "保存中..." : "保存"}

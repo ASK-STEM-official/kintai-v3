@@ -4,7 +4,6 @@ import { completeRegistration, signInWithDiscord } from '@/app/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icons } from '@/components/icons';
-import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,10 +12,18 @@ import { useSearchParams } from 'next/navigation';
 import type { Tables } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
+import { useFormStatus } from 'react-dom';
+
+function SubmitButton() {
+    const { pending } = useFormStatus();
+    return (
+        <Button type="submit" className="w-full" size="lg" disabled={pending}>
+            {pending ? "登録中..." : "登録を完了する"}
+        </Button>
+    );
+}
 
 function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
-  // We need a form action that can be used in a client component.
-  // The `completeRegistration` action will handle the redirect.
   return (
     <form action={completeRegistration} className="space-y-4">
       <input type="hidden" name="token" value={token} />
@@ -41,7 +48,7 @@ function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit" className="w-full" size="lg">登録を完了する</Button>
+      <SubmitButton />
     </form>
   );
 }
@@ -152,10 +159,6 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">カードID:</span>
                                 <span className="font-mono font-medium">{tempReg.card_id}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">読み取り時刻:</span>
-                                <span className="font-medium">{format(new Date(tempReg.accessed_at!), 'yyyy/MM/dd HH:mm')}</span>
                             </div>
                         </CardContent>
                     </Card>
