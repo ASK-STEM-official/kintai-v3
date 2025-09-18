@@ -13,9 +13,13 @@ export async function GET(request: Request) {
 
     if (!error && data.session) {
       const discordToken = data.session.provider_token;
-      // This is a server-side constant, so it's fine to have it here.
-      // In a real-world app, you might get this from environment variables.
-      const requiredServerId = '863396708583342081';
+      const requiredServerId = process.env.DISCORD_SERVER_ID;
+
+      if (!requiredServerId) {
+        console.error('DISCORD_SERVER_ID is not set in environment variables.');
+        await supabase.auth.signOut();
+        return NextResponse.redirect(`${origin}/login?error=サーバーの設定に問題があります。`);
+      }
 
       if (discordToken) {
         try {

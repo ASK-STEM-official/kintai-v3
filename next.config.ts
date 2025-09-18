@@ -36,6 +36,9 @@ const nextConfig: NextConfig = {
       }
     ],
   },
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/ssr'],
+  },
 };
 
 export default nextConfig;

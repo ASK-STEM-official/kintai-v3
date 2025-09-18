@@ -8,7 +8,7 @@ This is a Next.js attendance management system for STEM research clubs, built wi
 
 1.  Create a new project on [Supabase](https://supabase.com).
 2.  Go to the **SQL Editor** in your Supabase project dashboard.
-3.  Copy the entire content of `supabase/migrations/0000_initial_schema.sql` and run it. This will create all the necessary tables, roles, policies, and functions.
+3.  Run the SQL queries from `supabase/migrations/` to create the necessary tables and functions.
 4.  Go to **Authentication -> Providers** and enable the **Discord** provider. You will need a Discord Client ID and Client Secret from your Discord Developer Portal.
 5.  In the Discord provider settings, make sure to add the following as a "Redirect URI": `http://localhost:9002/auth/callback`
 6.  Go to **Project Settings -> API**. Find your Project URL and `anon` public key. You will need these for your environment variables.
@@ -16,22 +16,7 @@ This is a Next.js attendance management system for STEM research clubs, built wi
 
 ### 2. Environment Variables
 
-Create a file named `.env.local` in the root of the project and add the following environment variables. Use `.env.local.example` as a template.
-
-```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_PROJECT_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
-DATABASE_URL=YOUR_SUPABASE_DATABASE_CONNECTION_STRING
-
-# Discord OAuth
-DISCORD_CLIENT_ID=YOUR_DISCORD_CLIENT_ID
-DISCORD_CLIENT_SECRET=YOUR_DISCORD_CLIENT_SECRET
-
-# Application
-NEXT_PUBLIC_APP_URL=http://localhost:9002
-```
+Create a file named `.env.local` in the root of the project. Copy the contents of `.env.local.example` and fill in the values with your project's details.
 
 ### 3. Install Dependencies and Run the App
 
