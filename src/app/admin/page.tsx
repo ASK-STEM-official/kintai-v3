@@ -3,9 +3,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UsersTab from "./_components/UsersTab";
 import AnnouncementsTab from "./_components/AnnouncementsTab";
 import LogsTab from "./_components/LogsTab";
-import { getAllUsers, getAllTeams, getAllAnnouncements, getAllUserEditLogs, getAllDailyLogoutLogs } from "../actions";
-import { User, Annoyed, History, AlertCircle } from "lucide-react";
+import TeamsTab from "./_components/TeamsTab";
+import SystemTab from "./_components/SystemTab";
+import { getAllUsers, getAllTeams, getAllAnnouncements, getAllUserEditLogs, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
+import { User, Annoyed, History, AlertCircle, Users2, Power, FilePenLine } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import TempRegistrationsTab from "./_components/TempRegistrationsTab";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +22,14 @@ export default async function AdminPage() {
     announcementsResult,
     userEditLogsResult,
     dailyLogoutLogsResult,
+    tempRegistrationsResult,
   ] = await Promise.all([
     getAllUsers(),
     getAllTeams(),
     getAllAnnouncements(),
     getAllUserEditLogs(),
     getAllDailyLogoutLogs(),
+    getTempRegistrations(),
   ]);
 
   const { data: users, error: usersError } = usersResult;
@@ -32,8 +37,10 @@ export default async function AdminPage() {
   const { data: announcements, error: announcementsError } = announcementsResult;
   const { data: userEditLogs, error: userEditLogsError } = userEditLogsResult;
   const { data: dailyLogoutLogs, error: dailyLogoutLogsError } = dailyLogoutLogsResult;
+  const { data: tempRegistrations, error: tempRegistrationsError } = tempRegistrationsResult;
 
-  const errors = [usersError, teamsError, announcementsError, userEditLogsError, dailyLogoutLogsError].filter(Boolean);
+
+  const errors = [usersError, teamsError, announcementsError, userEditLogsError, dailyLogoutLogsError, tempRegistrationsError].filter(Boolean);
 
   return (
     <div className="space-y-6">
@@ -48,17 +55,25 @@ export default async function AdminPage() {
             <AlertTitle>データの読み込みエラー</AlertTitle>
             <AlertDescription>
                 <ul className="list-disc pl-5">
-                    {errors.map((error, index) => <li key={index}>{error.message}</li>)}
+                    {errors.map((error, index) => <li key={index}>{(error as Error).message}</li>)}
                 </ul>
             </AlertDescription>
         </Alert>
       )}
 
       <Tabs defaultValue="users">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="users">
             <User className="mr-2 h-4 w-4" />
             ユーザー管理
+          </TabsTrigger>
+          <TabsTrigger value="teams">
+            <Users2 className="mr-2 h-4 w-4" />
+            班管理
+          </TabsTrigger>
+           <TabsTrigger value="temp_registrations">
+            <FilePenLine className="mr-2 h-4 w-4" />
+            仮登録管理
           </TabsTrigger>
           <TabsTrigger value="announcements">
             <Annoyed className="mr-2 h-4 w-4" />
@@ -68,6 +83,10 @@ export default async function AdminPage() {
             <History className="mr-2 h-4 w-4" />
             ログ
           </TabsTrigger>
+           <TabsTrigger value="system">
+            <Power className="mr-2 h-4 w-4" />
+            システム
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users">
           <UsersTab 
@@ -75,6 +94,12 @@ export default async function AdminPage() {
             teams={teams || []} 
             currentUser={currentUser!}
           />
+        </TabsContent>
+        <TabsContent value="teams">
+          <TeamsTab teams={teams || []} />
+        </TabsContent>
+         <TabsContent value="temp_registrations">
+            <TempRegistrationsTab tempRegistrations={tempRegistrations || []} />
         </TabsContent>
         <TabsContent value="announcements">
           <AnnouncementsTab 
@@ -87,6 +112,9 @@ export default async function AdminPage() {
             userEditLogs={userEditLogs || []} 
             dailyLogoutLogs={dailyLogoutLogs || []}
           />
+        </TabsContent>
+         <TabsContent value="system">
+          <SystemTab />
         </TabsContent>
       </Tabs>
     </div>

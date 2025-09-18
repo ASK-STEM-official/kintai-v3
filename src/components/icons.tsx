@@ -17,7 +17,8 @@ import {
   LogOut,
   LogIn,
   Network,
-  History
+  History,
+  FilePenLine,
 } from 'lucide-react';
 
 export const Icons = {
@@ -39,6 +40,7 @@ export const Icons = {
   LogIn,
   Network,
   History,
+  FilePenLine,
   Logo: (props: LucideProps) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"

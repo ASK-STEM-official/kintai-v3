@@ -29,7 +29,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   const [qrExpiry, setQrExpiry] = useState<number>(0);
   const [announcement, setAnnouncement] = useState(initialAnnouncement);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
-  const [isCopied, setIsCopied] = useState(false);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
 
 
@@ -54,10 +53,11 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     
     setKioskState('processing');
 
-    const currentKioskState = kioskState; // Use the state at the moment of submission
+    // Make a local copy of kioskState to avoid race conditions
+    const stateAtSubmission = kioskState;
     setInputValue(''); 
 
-    if (currentKioskState === 'register') {
+    if (stateAtSubmission === 'register') {
       const result = await createTempRegistration(cardId);
       if (result.success && result.token) {
         setQrToken(result.token);
@@ -68,7 +68,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
         setMessage(result.message);
         setSubMessage('');
       }
-    } else {
+    } else { // This includes 'idle', 'input', and 'success' states
       const result = await recordAttendance(cardId);
       if (result.success && result.user) {
         setKioskState('success');
@@ -90,8 +90,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     if (kioskState === 'success' || kioskState === 'error') {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(resetToIdle, AUTO_RESET_DELAY);
-    } else if (kioskState !== 'idle') {
-       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     }
     
     return () => {
@@ -102,11 +100,18 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   
    useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (kioskState === 'processing' || kioskState === 'qr') {
-        if(e.key === 'Escape') resetToIdle();
+       // Allow continuous input even in success state
+      if (kioskState === 'processing' || (kioskState === 'qr' && e.key !== 'Escape')) {
         return;
       }
 
+      // Allow Escape key to reset from any state
+      if (e.key === 'Escape') {
+        if(resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetToIdle();
+        return;
+      }
+      
       if (e.key === 'Enter') {
         if (inputValue.trim()) {
             handleFormSubmit(inputValue);
@@ -114,15 +119,8 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
         return;
       }
       
-      if (e.key === 'Escape') {
-        resetToIdle();
-        return;
-      }
-      
       if (e.key === '/') {
-         if (kioskState === 'success' || kioskState === 'error') {
-            if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-         }
+         if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
         e.preventDefault();
         setKioskState('register');
         setMessage('新規カード登録');
@@ -134,7 +132,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       // Allow alphanumeric and some symbols for card IDs
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         setInputValue(prev => prev + e.key);
-        if (kioskState !== 'register') {
+        if (kioskState === 'idle' || kioskState === 'success') {
            setKioskState('input');
         }
       }
@@ -154,17 +152,26 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     window.addEventListener('offline', updateOnlineStatus);
     updateOnlineStatus();
     
-    const qrChannel = supabase
-      .channel('kiosk-qr-channel')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}`},
-        (payload) => {
-          if (payload.new.is_used && kioskState === 'qr') {
-            resetToIdle();
+    let qrChannel: any;
+    if (kioskState === 'qr' && qrToken) {
+      qrChannel = supabase
+        .channel(`kiosk-qr-channel-${qrToken}`)
+        .on(
+          'postgres_changes',
+          { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'temp_registrations', 
+            filter: `qr_token=eq.${qrToken}`
+          },
+          (payload) => {
+            if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
+              if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+              resetToIdle();
+            }
           }
-        }
-      ).subscribe();
+        ).subscribe();
+    }
     
     const announcementChannel = supabase
       .channel('kiosk-announcement-channel')
@@ -180,8 +187,8 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
-      supabase.removeChannel(qrChannel);
-      supabase.removeChannel(announcementChannel);
+      if (qrChannel) supabase.removeChannel(qrChannel);
+      if (announcementChannel) supabase.removeChannel(announcementChannel);
     };
   }, [supabase, qrToken, kioskState, resetToIdle]);
   
@@ -200,10 +207,10 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     }, []);
     
     const minutes = Math.floor(remaining / 60000);
-    const seconds = Math.floor((remaining % 60000) / 1000);
+    const seconds = Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0');
 
     return (
-       <p className="mt-2 text-lg">有効期限: あと{minutes}分{seconds.toString().padStart(2, '0')}秒</p>
+       <p className="mt-2 text-lg">有効期限: あと{minutes}分{seconds}秒</p>
     )
   }
   
@@ -246,23 +253,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     if (!qrToken) return null;
     const url = `${process.env.NEXT_PUBLIC_APP_URL}/register/${qrToken}`;
 
-    const handleCopy = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const urlInput = document.getElementById('qr-url-input') as HTMLInputElement;
-        if (urlInput) {
-            urlInput.select();
-            urlInput.setSelectionRange(0, 99999); // For mobile devices
-            try {
-                // This might fail in non-secure contexts, but selection should still work.
-                document.execCommand('copy');
-                setIsCopied(true);
-                setTimeout(() => setIsCopied(false), 2000);
-            } catch (err) {
-                console.error('Fallback copy failed: ', err);
-            }
-        }
-    };
-
     return (
       <div className="text-center flex flex-col items-center">
         <p className="text-4xl font-bold mb-4">QRコード登録</p>
@@ -276,24 +266,9 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
                 priority
             />
         </div>
-        <div 
-          className="relative mt-4 w-full max-w-sm group"
-          onClick={handleCopy}
-        >
-          <input
-            id="qr-url-input"
-            readOnly
-            value={url}
-            className="bg-gray-800 p-2 pr-10 rounded-md font-mono text-sm w-full border-none text-white cursor-pointer select-all"
-          />
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-            {isCopied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5 text-gray-400 group-hover:text-white" />}
-          </div>
-        </div>
-        
-        <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取るか、URLをクリックしてコピーし登録を完了してください。</p>
+        <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取り登録を完了してください。</p>
         <QrTimer />
-        <p className="text-sm text-gray-500 mt-4">※登録完了後、この画面は自動的に戻ります</p>
+        <p className="text-sm text-gray-500 mt-4">※QR読み取り後、この画面は自動的に戻ります</p>
       </div>
     );
   };

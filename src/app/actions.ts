@@ -40,6 +40,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     return { success: false, message: '打刻処理中にエラーが発生しました。', user, type: null };
   }
   
+  revalidatePath('/dashboard/teams');
   return { 
     success: true, 
     message: attendanceType === 'in' ? '出勤しました' : '退勤しました',
@@ -54,13 +55,11 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
   const token = `qr_${crypto.randomUUID()}`;
   const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-  // Check if card is already registered
   const { data: existingUser } = await supabase.from('users').select('id').eq('card_id', cardId).single();
   if (existingUser) {
     return { success: false, message: 'このカードは既に登録されています。' };
   }
   
-  // Upsert temp registration
   const { error } = await supabase.from('temp_registrations').upsert(
     { card_id: cardId, qr_token: token, expires_at: expires_at, is_used: false },
     { onConflict: 'card_id' }
@@ -83,7 +82,6 @@ export async function getTempRegistration(token: string) {
         .single();
     if (error || !data) return null;
 
-    // Mark as accessed
     if (!data.accessed_at) {
         const admin = createSupabaseAdminClient();
         await admin.from('temp_registrations').update({ accessed_at: new Date().toISOString() }).eq('id', data.id);
@@ -133,7 +131,7 @@ export async function completeRegistration(formData: FormData) {
     generation: generation,
     team_id: teamId,
     card_id: tempReg.card_id,
-    role: 0, // Default role
+    role: 0,
     is_active: true,
   };
 
@@ -141,7 +139,7 @@ export async function completeRegistration(formData: FormData) {
 
   if (insertUserError) {
     console.error("Error inserting user:", insertUserError);
-    if(insertUserError.code === '23505') { // unique violation
+    if(insertUserError.code === '23505') {
       if (insertUserError.details.includes('discord_id')) {
         return redirect(`/register/${token}?error=This Discord account is already registered.`);
       }
@@ -182,11 +180,11 @@ export async function signInWithDiscord() {
 
 
 export async function signOut() {
-    const cookieStore = cookies();
+    cookies().getAll();
     const supabase = createSupabaseServerClient();
     await supabase.auth.signOut();
     revalidatePath('/', 'layout');
-    return;
+    return redirect('/login');
 }
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
@@ -209,7 +207,6 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
     return [];
   }
 
-  // Aggregate by date
   const dailyStatus: Record<string, 'in' | 'out' | 'mixed'> = {};
   data.forEach(att => {
     const date = att.date;
@@ -230,7 +227,7 @@ export async function getAllUsers() {
 
 export async function getAllTeams() {
     const supabase = createSupabaseAdminClient();
-    return supabase.from('teams').select('*');
+    return supabase.from('teams').select('*').order('name');
 }
 
 export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
@@ -240,6 +237,110 @@ export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
     revalidatePath('/admin');
     return { success: true, message: 'ユーザー情報を更新しました。' };
 }
+
+export async function createTeam(name: string) {
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from('teams').insert({ name });
+    if(error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    revalidatePath('/dashboard', 'layout');
+    return { success: true, message: '班を作成しました。'};
+}
+
+export async function updateTeam(id: number, name: string) {
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from('teams').update({ name }).eq('id', id);
+    if(error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    revalidatePath('/dashboard', 'layout');
+    return { success: true, message: '班を更新しました。'};
+}
+
+export async function deleteTeam(id: number) {
+    const supabase = createSupabaseAdminClient();
+    const { count } = await supabase.from('users').select('*', { count: 'exact' }).eq('team_id', id);
+
+    if (count && count > 0) {
+        return { success: false, message: `この班には${count}人のユーザーが所属しているため、削除できません。` };
+    }
+
+    const { error } = await supabase.from('teams').delete().eq('id', id);
+    if(error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    revalidatePath('/dashboard', 'layout');
+    return { success: true, message: '班を削除しました。' };
+}
+
+export async function forceLogoutAll() {
+    const supabase = createSupabaseAdminClient();
+    const { data: users, error: usersError } = await supabase
+        .rpc('get_users_currently_in');
+
+    if (usersError) {
+        return { success: false, message: usersError.message };
+    }
+    
+    if (!users || users.length === 0) {
+        return { success: true, message: '現在活動中のユーザーはいません。', count: 0 };
+    }
+
+    const attendanceRecords = users.map(u => ({ user_id: u.id, type: 'out' as const }));
+    const { error: insertError } = await supabase.from('attendances').insert(attendanceRecords);
+
+    if (insertError) {
+        return { success: false, message: insertError.message };
+    }
+
+    await supabase.from('daily_logout_logs').insert({ affected_count: users.length, status: 'success' });
+
+    revalidatePath('/admin');
+    revalidatePath('/dashboard/teams', 'page');
+    return { success: true, message: `${users.length}人のユーザーを強制退勤させました。`, count: users.length };
+}
+
+export async function forceToggleAttendance(userId: string) {
+    const supabase = createSupabaseAdminClient();
+
+    const { data: lastAttendance, error: lastAttendanceError } = await supabase
+        .from('attendances')
+        .select('type')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .single();
+    
+    if(lastAttendanceError && lastAttendanceError.code !== 'PGRST116') { // Not an error if no rows found
+        return { success: false, message: lastAttendanceError.message };
+    }
+
+    const newType = lastAttendance?.type === 'in' ? 'out' : 'in';
+
+    const { error: insertError } = await supabase.from('attendances').insert({ user_id: userId, type: newType });
+    if(insertError) {
+        return { success: false, message: insertError.message };
+    }
+
+    revalidatePath('/admin');
+    revalidatePath('/dashboard/teams', 'page');
+    return { success: true, message: `ユーザーを強制的に${newType === 'in' ? '出勤' : '退勤'}させました。` };
+}
+
+export async function getTeamWithMembersStatus(teamId: number) {
+    const supabase = createSupabaseServerClient();
+    const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', teamId).single();
+
+    if(teamError) return { team: null, members: [] };
+
+    const { data: members, error: membersError } = await supabase
+        .from('users')
+        .select('*, latest_attendance: daily_team_attendance!inner(type)')
+        .eq('team_id', teamId)
+        .order('generation', { ascending: false })
+        .order('display_name');
+
+    return { team, members: members || [] };
+}
+
 
 export async function getAllAnnouncements() {
     const supabase = createSupabaseAdminClient();
@@ -293,4 +394,17 @@ export async function getAllDailyLogoutLogs() {
         .from('daily_logout_logs')
         .select('*')
         .order('executed_at', { ascending: false });
+}
+
+export async function getTempRegistrations() {
+    const supabase = createSupabaseAdminClient();
+    return supabase.from('temp_registrations').select('*').order('created_at', { ascending: false });
+}
+
+export async function deleteTempRegistration(id: string) {
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from('temp_registrations').delete().eq('id', id);
+    if(error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    return { success: true, message: '仮登録を削除しました。' };
 }

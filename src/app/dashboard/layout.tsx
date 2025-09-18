@@ -1,4 +1,4 @@
-import { signOut } from "@/app/actions";
+import { signOut, getAllTeams } from "@/app/actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
@@ -6,15 +6,11 @@ import {
   SidebarProvider,
   SidebarHeader,
   SidebarContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
-import Link from "next/link";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 import DashboardNav from "./_components/DashboardNav";
@@ -30,14 +26,16 @@ async function UserProfile({ user }: { user: any }) {
             <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
         <div className="flex flex-col">
-            <span className="font-semibold text-sm">{profile?.display_name}</span>
+            <span className="font-semibold text-sm">{profile?.display_name || '名無しさん'}</span>
             <span className="text-xs text-muted-foreground">{user.email}</span>
         </div>
     </div>
   )
 }
 
-function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+  const { data: teams } = await getAllTeams();
+
   return (
     <>
       <SidebarHeader>
@@ -47,7 +45,7 @@ function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
-        <DashboardNav isAdmin={isAdmin} />
+        <DashboardNav isAdmin={isAdmin} teams={teams || []} />
       </SidebarContent>
       <SidebarFooter>
         <UserProfile user={user} />
@@ -91,13 +89,9 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  // Check if a user profile exists in the public.users table
   const { data: profile, error } = await supabase.from('users').select('id, role').eq('id', user.id).single();
 
-  // If no profile exists, the user has not completed registration.
   if (!profile) {
-    // Redirect to a page that explains they need to register their card.
-    // The register page with a dummy token will show an error, which is appropriate here.
     return redirect("/register/unregistered");
   }
 

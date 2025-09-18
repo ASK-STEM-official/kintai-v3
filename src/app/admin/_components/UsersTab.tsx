@@ -22,13 +22,13 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { MoreHorizontal, Edit } from "lucide-react"
+import { Edit, LogIn, LogOut } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { updateUser, logUserEdit } from '@/app/actions';
+import { updateUser, logUserEdit, forceToggleAttendance } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 
@@ -51,13 +51,23 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
         setDialogOpen(true);
     }
     
+    const handleForceToggle = async (userId: string) => {
+        const result = await forceToggleAttendance(userId);
+        if (result.success) {
+            toast({ title: "成功", description: result.message });
+        } else {
+            toast({ variant: "destructive", title: "エラー", description: result.message });
+        }
+    }
+
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!editingUser) return;
         
         setIsSubmitting(true);
         const formData = new FormData(event.currentTarget);
-        const updatedData: Partial<Tables<'users'>> = {
+        
+        const updatedData = {
             display_name: formData.get('display_name') as string,
             generation: Number(formData.get('generation')),
             team_id: Number(formData.get('team_id')),
@@ -71,20 +81,20 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
         if (result.success) {
             toast({ title: "成功", description: result.message });
             
-            // Log changes
-            for (const key in updatedData) {
-                const fieldName = key as keyof typeof updatedData;
-                const oldValue = editingUser[fieldName];
-                const newValue = updatedData[fieldName];
-                if (String(oldValue) !== String(newValue)) {
-                    await logUserEdit({
-                        target_user_id: editingUser.id,
-                        editor_user_id: currentUser.id,
-                        field_name: fieldName,
-                        old_value: String(oldValue),
-                        new_value: String(newValue),
-                    });
-                }
+            const changedFields = Object.keys(updatedData).filter(key => {
+                const fieldKey = key as keyof typeof updatedData;
+                return String(updatedData[fieldKey]) !== String(editingUser[fieldKey]);
+            });
+
+            for (const fieldName of changedFields) {
+                const key = fieldName as keyof typeof updatedData;
+                 await logUserEdit({
+                    target_user_id: editingUser.id,
+                    editor_user_id: currentUser.id,
+                    field_name: key,
+                    old_value: String(editingUser[key]),
+                    new_value: String(updatedData[key]),
+                });
             }
 
             setDialogOpen(false);
@@ -99,7 +109,7 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
             <CardHeader>
                 <CardTitle>ユーザー管理</CardTitle>
                 <CardDescription>
-                    ユーザー情報の表示と編集を行います。
+                    ユーザー情報の表示と編集、および手動での出退勤操作を行います。
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -111,9 +121,7 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                         <TableHead>役割</TableHead>
                         <TableHead>カードID</TableHead>
                         <TableHead>状態</TableHead>
-                        <TableHead>
-                        <span className="sr-only">Actions</span>
-                        </TableHead>
+                        <TableHead>アクション</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -128,8 +136,12 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                              <TableCell>
                                 <Badge variant={user.is_active ? "default" : "secondary"}>{user.is_active ? '有効' : '無効'}</Badge>
                             </TableCell>
-                            <TableCell>
-                                <Button aria-haspopup="true" size="icon" variant="ghost" onClick={() => handleEdit(user)}>
+                            <TableCell className="space-x-2 flex items-center">
+                                <Button title="強制出退勤" aria-haspopup="true" size="icon" variant="ghost" onClick={() => handleForceToggle(user.id)}>
+                                    <LogIn className="h-4 w-4" />
+                                    <span className="sr-only">Force Toggle Attendance</span>
+                                </Button>
+                                <Button title="編集" aria-haspopup="true" size="icon" variant="ghost" onClick={() => handleEdit(user)}>
                                     <Edit className="h-4 w-4" />
                                     <span className="sr-only">Edit user</span>
                                 </Button>
