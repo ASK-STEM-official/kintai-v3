@@ -99,7 +99,6 @@ export async function completeRegistration(formData: FormData) {
   const teamId = Number(formData.get('teamId'));
 
   if (!token || !displayName || !generation || !teamId) {
-    // This should be handled by form validation, but as a safeguard.
     return redirect(`/register/${token}?error=Missing form data`);
   }
 
@@ -108,7 +107,6 @@ export async function completeRegistration(formData: FormData) {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.user_metadata.provider_id) {
-    // This should not happen if the form is only shown to authenticated users.
     return redirect(`/register/${token}?error=Not authenticated`);
   }
   
@@ -243,6 +241,11 @@ export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
     return { success: true, message: 'ユーザー情報を更新しました。' };
 }
 
+export async function getAllAnnouncements() {
+    const supabase = createSupabaseAdminClient();
+    return supabase.from('announcements').select('*, users(display_name)').order('created_at', { ascending: false });
+}
+
 export async function createAnnouncement(data: TablesInsert<'announcements'>) {
     const supabase = createSupabaseAdminClient();
     const { error } = await supabase.from('announcements').insert(data);
@@ -259,7 +262,7 @@ export async function updateAnnouncement(id: string, data: TablesUpdate<'announc
     const { error } = await supabase.from('announcements').update(data).eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
-revalidatePath('/');
+    revalidatePath('/');
     return { success: true, message: 'お知らせを更新しました。'};
 }
 

@@ -23,11 +23,33 @@ export default async function DashboardPage() {
 
     const { data: profile } = await supabase.from('users').select('*, teams(name)').eq('id', user!.id).single();
     const { data: attendances, error } = await supabase.from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5);
-    const { data: stats } = await supabase.from('attendances').select('type').eq('user_id', user!.id);
+
+    // 1. Correctly count distinct attendance days for the user
+    const { count: totalIn, error: totalInError } = await supabase
+      .from('attendances')
+      .select('date', { count: 'exact', head: true })
+      .eq('user_id', user!.id)
+      .eq('type', 'in');
+
+    // To get distinct days, we fetch the dates and count them in code.
+    const { data: distinctDates, error: distinctDatesError } = await supabase
+      .from('attendances')
+      .select('date')
+      .eq('user_id', user!.id)
+      .eq('type', 'in');
+
+    const userAttendanceDays = distinctDates ? new Set(distinctDates.map(d => d.date)).size : 0;
     
-    const totalIn = stats?.filter(s => s.type === 'in').length || 0;
-    const totalOut = stats?.filter(s => s.type === 'out').length || 0;
-    const attendanceRate = totalIn > 0 ? (totalIn / (totalIn + (totalIn - totalOut))) * 100 : 0;
+    // 2. Get total number of active club days (days where at least one person attended)
+    const { data: totalClubActivityDates, error: totalClubActivityDatesError } = await supabase
+      .from('attendances')
+      .select('date')
+      .eq('type', 'in');
+    
+    const totalClubDays = totalClubActivityDates ? new Set(totalClubActivityDates.map(d => d.date)).size : 0;
+
+    // 3. Calculate attendance rate based on the new logic
+    const attendanceRate = totalClubDays > 0 ? (userAttendanceDays / totalClubDays) * 100 : 0;
     
   return (
     <div className="space-y-6">
@@ -49,7 +71,7 @@ export default async function DashboardPage() {
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{totalIn}日</div>
+                    <div className="text-2xl font-bold">{userAttendanceDays}日</div>
                 </CardContent>
             </Card>
             <Card>
@@ -71,6 +93,9 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{attendanceRate.toFixed(1)}%</div>
+                    <p className="text-xs text-muted-foreground">
+                        活動総日数: {totalClubDays}日
+                    </p>
                 </CardContent>
             </Card>
             <Card>

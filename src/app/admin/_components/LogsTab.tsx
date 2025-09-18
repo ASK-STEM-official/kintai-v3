@@ -17,9 +17,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Bot, UserCog } from "lucide-react";
+import ClientRelativeTime from "@/app/dashboard/_components/ClientRelativeTime";
 
 type UserEditLog = {
   id: string;
@@ -110,7 +111,7 @@ export default function LogsTab({
                             <TableCell>
                                 <div className="flex flex-col">
                                     <span className="font-medium">{format(new Date(log.created_at), "yyyy/MM/dd HH:mm", { locale: ja })}</span>
-                                    <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(log.created_at), { addSuffix: true, locale: ja })}</span>
+                                    <span className="text-xs text-muted-foreground"><ClientRelativeTime date={log.created_at} /></span>
                                 </div>
                             </TableCell>
                             <TableCell>{log.editor?.display_name || 'N/A'}</TableCell>
@@ -142,7 +143,7 @@ export default function LogsTab({
                                      <TableCell>
                                         <div className="flex flex-col">
                                             <span className="font-medium">{format(new Date(log.executed_at), "yyyy/MM/dd HH:mm", { locale: ja })}</span>
-                                            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(log.executed_at), { addSuffix: true, locale: ja })}</span>
+                                            <span className="text-xs text-muted-foreground"><ClientRelativeTime date={log.executed_at} /></span>
                                         </div>
                                     </TableCell>
                                     <TableCell>
