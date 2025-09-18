@@ -30,7 +30,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [isCopied, setIsCopied] = useState(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -41,15 +40,47 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     setMessage('');
     setSubMessage('');
     setQrToken(null);
-    inputRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    // Focus input on idle state
-    if (kioskState === 'idle' || kioskState === 'error') {
-      inputRef.current?.focus();
+  const handleFormSubmit = useCallback(async (cardId: string) => {
+    if (!cardId.trim() || kioskState === 'processing' || kioskState === 'success' || kioskState === 'qr') {
+      setInputValue('');
+      return;
     }
+    
+    setKioskState('processing');
 
+    const currentKioskState = kioskState; // Use the state at the moment of submission
+    setInputValue(''); 
+
+    if (currentKioskState === 'register' || (currentKioskState === 'input' && (message === '新規カード登録' || subMessage.includes('登録するには')))) {
+      const result = await createTempRegistration(cardId);
+      if (result.success && result.token) {
+        setQrToken(result.token);
+        setQrExpiry(Date.now() + 30 * 60 * 1000);
+        setKioskState('qr');
+      } else {
+        setKioskState('error');
+        setMessage(result.message);
+        setSubMessage('');
+      }
+    } else {
+      const result = await recordAttendance(cardId);
+      if (result.success && result.user) {
+        setKioskState('success');
+        const teamName = teams.find(t => t.id === result.user.team_id)?.name || '未設定';
+        setMessage(`${result.user.display_name} (${teamName}・${result.user.generation}期生)`);
+        setSubMessage(result.message);
+      } else {
+        setKioskState('error');
+        setMessage(result.message);
+        setSubMessage('登録するには「/」キーを押してください');
+      }
+    }
+  }, [kioskState, message, subMessage, teams, resetToIdle]);
+
+
+  useEffect(() => {
     // Auto-reset timer for success and error states
     if (kioskState === 'success' || kioskState === 'error') {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -66,28 +97,46 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   
    useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' && document.activeElement !== inputRef.current) {
-        if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
+      if (kioskState === 'processing' || kioskState === 'success' || kioskState === 'qr') {
+        if(e.key === 'Escape') resetToIdle();
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (inputValue.trim()) {
+            handleFormSubmit(inputValue);
+        }
         return;
       }
       
-      if (kioskState === 'processing' || kioskState === 'success') return;
-
       if (e.key === 'Escape') {
         resetToIdle();
-      } else if (e.key === '/') {
+        return;
+      }
+      
+      if (e.key === '/') {
         e.preventDefault();
         setKioskState('register');
         setMessage('新規カード登録');
         setSubMessage('登録したいカードをタッチしてください');
-      } else {
-        inputRef.current?.focus();
+        setInputValue('');
+        return;
+      }
+      
+      // Allow alphanumeric and some symbols for card IDs
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        setInputValue(prev => prev + e.key);
+        setKioskState('input');
+      }
+
+      if (e.key === 'Backspace') {
+        setInputValue(prev => prev.slice(0, -1));
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [kioskState, resetToIdle]);
+  }, [kioskState, resetToIdle, inputValue, handleFormSubmit]);
   
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -125,53 +174,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
       supabase.removeChannel(announcementChannel);
     };
   }, [supabase, qrToken, kioskState, resetToIdle]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newInputValue = e.target.value;
-    setInputValue(newInputValue);
-    if(newInputValue.trim() !== '' && (kioskState === 'idle' || kioskState === 'input' || kioskState === 'register' || kioskState === 'error')) {
-        setKioskState('input');
-    }
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!inputValue.trim() || kioskState === 'processing' || kioskState === 'success' || kioskState === 'qr') {
-      setInputValue('');
-      return;
-    }
-    
-    setKioskState('processing');
-
-    const currentKioskState = kioskState; // Use the state at the moment of submission
-    const currentInputValue = inputValue;
-    setInputValue(''); 
-
-    if (currentKioskState === 'register' || (currentKioskState === 'input' && (message === '新規カード登録' || subMessage.includes('登録するには')))) {
-      const result = await createTempRegistration(currentInputValue);
-      if (result.success && result.token) {
-        setQrToken(result.token);
-        setQrExpiry(Date.now() + 30 * 60 * 1000);
-        setKioskState('qr');
-      } else {
-        setKioskState('error');
-        setMessage(result.message);
-        setSubMessage('');
-      }
-    } else {
-      const result = await recordAttendance(currentInputValue);
-      if (result.success && result.user) {
-        setKioskState('success');
-        const teamName = teams.find(t => t.id === result.user.team_id)?.name || '未設定';
-        setMessage(`${result.user.display_name} (${teamName}・${result.user.generation}期生)`);
-        setSubMessage(result.message);
-      } else {
-        setKioskState('error');
-        setMessage(result.message);
-        setSubMessage('登録するには「/」キーを押してください');
-      }
-    }
-  };
   
   const QrTimer = () => {
     const [remaining, setRemaining] = useState(qrExpiry - Date.now());
@@ -234,13 +236,13 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     if (!qrToken) return null;
     const url = `${process.env.NEXT_PUBLIC_APP_URL}/register/${qrToken}`;
 
-    const handleCopy = () => {
+    const handleCopy = (e: React.MouseEvent) => {
+        e.stopPropagation();
         navigator.clipboard.writeText(url).then(() => {
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
         }).catch(err => {
             console.error('Failed to copy: ', err);
-            // You can add a toast notification here to inform the user about the failure.
         });
     };
 
@@ -257,7 +259,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
                 priority
             />
         </div>
-        <div className="relative mt-4 w-full max-w-sm">
+        <div className="relative mt-4 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <input 
                 readOnly
                 value={url}
@@ -324,18 +326,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
 
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-body">
-      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl relative flex flex-col items-center justify-center overflow-hidden" onClick={() => inputRef.current?.focus()}>
-        <form onSubmit={handleFormSubmit}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onBlur={(e) => { if(kioskState !== 'qr' && kioskState !== 'processing') e.target.focus()}}
-            autoFocus
-            className="opacity-0 absolute w-0 h-0"
-          />
-        </form>
+      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl relative flex flex-col items-center justify-center overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center p-4">
           {renderState()}
         </div>

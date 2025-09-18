@@ -43,7 +43,6 @@ async function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
       <div>
         <Label htmlFor="displayName">表示名</Label>
         <Input id="displayName" name="displayName" placeholder="例: 山田太郎" required />
-        <p className="text-xs text-muted-foreground mt-1">他の人から見える名前です。後から変更可能です。</p>
       </div>
       <div>
         <Label htmlFor="generation">期生</Label>
@@ -173,14 +172,6 @@ export default async function RegisterPage({ params, searchParams }: { params: {
                 </div>
             </CardContent>
           </Card>
-
-          <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>注意</AlertTitle>
-              <AlertDescription>
-                登録には、対象のDiscordサーバーに参加している必要があります。
-              </AlertDescription>
-          </Alert>
 
           <RegisterForm token={params.token} teams={teams || []} />
 

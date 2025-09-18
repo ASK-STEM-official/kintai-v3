@@ -139,19 +139,9 @@ export async function completeRegistration(
       if (insertUserError.details.includes('discord_id')) {
         return { success: false, message: "このDiscordアカウントは既に登録されています。" };
       }
-      if (insertUserError.details.includes('display_name')) {
-        // Retry with a new random suffix if display_name is not unique
-        userData.display_name = `${formData.displayName}#${Math.floor(1000 + Math.random() * 9000)}`;
-        const { error: retryError } = await adminSupabase.from('users').insert(userData);
-        if (retryError) {
-           return { success: false, message: "ユーザー登録に失敗しました。(表示名)" };
-        }
-      } else {
-        return { success: false, message: "ユーザー登録に失敗しました。" };
-      }
-    } else {
-       return { success: false, message: "ユーザー登録に失敗しました。" };
+       return { success: false, message: "ユーザー登録に失敗しました。表示名が重複している可能性があります。" };
     }
+    return { success: false, message: `ユーザー登録に失敗しました: ${insertUserError.message}` };
   }
   
   await adminSupabase.from('temp_registrations').update({ is_used: true }).eq('id', tempReg.id);
@@ -242,11 +232,6 @@ export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
     return { success: true, message: 'ユーザー情報を更新しました。' };
-}
-
-export async function getAllAnnouncements() {
-    const supabase = createSupabaseAdminClient();
-    return supabase.from('announcements').select('*, users(display_name)').order('created_at', { ascending: false });
 }
 
 export async function createAnnouncement(data: TablesInsert<'announcements'>) {
