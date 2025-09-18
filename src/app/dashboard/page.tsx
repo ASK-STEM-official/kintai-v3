@@ -10,9 +10,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./_components/AttendanceCalendar";
+import ClientRelativeTime from "./_components/ClientRelativeTime";
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +106,7 @@ export default async function DashboardPage() {
                                 </Badge>
                             </TableCell>
                             <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
-                            <TableCell>{formatDistanceToNow(new Date(att.timestamp), { addSuffix: true, locale: ja })}</TableCell>
+                            <TableCell><ClientRelativeTime date={att.timestamp} /></TableCell>
                         </TableRow>
                     )) : (
                         <TableRow>

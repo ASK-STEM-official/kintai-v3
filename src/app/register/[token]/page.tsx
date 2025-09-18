@@ -1,8 +1,8 @@
-import { getTempRegistration, completeRegistration, signInWithDiscord } from '@/app/actions';
+import { getTempRegistration, completeRegistration, signInWithDiscord, getAllTeams } from '@/app/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icons } from '@/components/icons';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { format } from 'date-fns';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { Label } from '@/components/ui/label';
@@ -11,14 +11,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { getAllTeams } from '@/app/actions';
 
 export const dynamic = 'force-dynamic';
 
 async function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
-  const completeRegistrationWithToken = completeRegistration.bind(null, token);
+  const completeRegistrationWithToken = async (formData: FormData) => {
+      'use server'
+      const data = {
+        displayName: formData.get('displayName') as string,
+        generation: Number(formData.get('generation')),
+        teamId: Number(formData.get('teamId')),
+      };
+      await completeRegistration(token, data);
+  }
 
-  const { data: { user } } = await createSupabaseServerClient();
+  const { data: { user } } = await createSupabaseServerClient().auth.getUser();
   
   if (!user) {
     return (
@@ -35,8 +42,8 @@ async function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
     <form action={completeRegistrationWithToken} className="space-y-4">
       <div>
         <Label htmlFor="displayName">表示名</Label>
-        <Input id="displayName" name="displayName" placeholder="例: Yamada Taro" required />
-        <p className="text-xs text-muted-foreground mt-1">他の人から見える名前です。後から変更・重複可能です。</p>
+        <Input id="displayName" name="displayName" placeholder="例: 山田太郎" required />
+        <p className="text-xs text-muted-foreground mt-1">他の人から見える名前です。後から変更可能です。</p>
       </div>
       <div>
         <Label htmlFor="generation">期生</Label>
@@ -60,8 +67,31 @@ async function RegisterForm({ token, teams }: { token: string, teams: any[] }) {
   );
 }
 
-export default async function RegisterPage({ params }: { params: { token: string } }) {
-  const { data: { session } } = await createSupabaseServerClient();
+export default async function RegisterPage({ params, searchParams }: { params: { token: string }, searchParams: { success?: string } }) {
+    if (params.token === 'unregistered') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+                <Card className="w-full max-w-md">
+                    <CardHeader className="items-center text-center">
+                        <Icons.UserPlus className="w-16 h-16 text-destructive mb-4" />
+                        <CardTitle className="text-2xl">カードが未登録です</CardTitle>
+                        <CardDescription>
+                            ダッシュボードにアクセスするには、まずカードを登録する必要があります。
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="text-center space-y-4">
+                        <p className="text-muted-foreground">お手数ですが、Kiosk端末でQRコードをスキャンして登録を完了してください。</p>
+                        <Button asChild variant="outline">
+                            <Link href="/login">ログインページに戻る</Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+  
+  const supabase = createSupabaseServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
   
   const tempReg = await getTempRegistration(params.token);
 
@@ -85,14 +115,9 @@ export default async function RegisterPage({ params }: { params: { token: string
   }
   
   const { data: teams } = await getAllTeams();
-
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if(user) {
-    const { data: existingProfile } = await supabase.from('users').select('id').eq('id', user.id).single();
-    if (existingProfile) {
-        const { data: fullProfile } = await supabase.from('users').select('*, teams(name)').eq('id', user.id).single();
+  
+  if (searchParams.success === 'true' || (session?.user && (await supabase.from('users').select('id').eq('id', session.user.id).single()).data)) {
+        const { data: fullProfile } = await supabase.from('users').select('*, teams(name)').eq('discord_id', session!.user.user_metadata.provider_id).single();
 
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -125,7 +150,6 @@ export default async function RegisterPage({ params }: { params: { token: string
                 </Card>
             </div>
         );
-    }
   }
 
 
@@ -154,7 +178,7 @@ export default async function RegisterPage({ params }: { params: { token: string
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>注意</AlertTitle>
               <AlertDescription>
-                登録には、事前にサーバー管理者からDiscordサーバー内の期生ロールを付与されている必要があります。
+                登録には、対象のDiscordサーバーに参加している必要があります。
               </AlertDescription>
           </Alert>
 

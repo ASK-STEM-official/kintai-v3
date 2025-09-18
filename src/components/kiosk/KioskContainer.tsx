@@ -5,7 +5,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { recordAttendance, createTempRegistration } from '@/app/actions';
 import { Database } from '@/lib/types';
 import Clock from './Clock';
-import { Bell, CheckCircle2, XCircle, UserPlus, QrCode, Wifi, WifiOff } from 'lucide-react';
+import { Bell, CheckCircle2, XCircle, UserPlus, Wifi, WifiOff, Copy, Check } from 'lucide-react';
 import Image from 'next/image';
 
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing';
@@ -27,7 +27,8 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpiry, setQrExpiry] = useState<number>(0);
   const [announcement, setAnnouncement] = useState(initialAnnouncement);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
+  const [isCopied, setIsCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -43,7 +44,6 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     inputRef.current?.focus();
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     // Focus input on idle state
     if (kioskState === 'idle' || kioskState === 'error') {
@@ -90,7 +90,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
   }, [kioskState, resetToIdle]);
   
   useEffect(() => {
-    const updateOnlineStatus = () => setIsOnline(typeof navigator !== 'undefined' && navigator.onLine);
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
     updateOnlineStatus();
@@ -191,9 +191,92 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
     const seconds = Math.floor((remaining % 60000) / 1000);
 
     return (
-       <p className="mt-4 text-xl">有効期限: あと{minutes}分{seconds.toString().padStart(2, '0')}秒</p>
+       <p className="mt-2 text-lg">有効期限: あと{minutes}分{seconds.toString().padStart(2, '0')}秒</p>
     )
   }
+  
+  const IdleScreen = () => (
+    <div className="flex flex-col items-center justify-between h-full w-full py-8 px-4">
+        <div className="w-full flex justify-between items-center px-8 text-xl">
+            <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
+            {isOnline !== undefined && (
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                {isOnline ? <Wifi size={16}/> : <WifiOff size={16}/>}
+                <span>{isOnline ? 'オンライン' : 'オフライン'}</span>
+            </div>
+            )}
+        </div>
+
+        {announcement && announcement.is_active && (
+            <div className="w-full max-w-4xl p-6 bg-blue-500/10 border border-blue-400/30 rounded-lg text-center">
+            <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-3">
+                <Bell className="text-blue-300" />
+                {announcement.title}
+            </h2>
+            <p className="text-lg text-gray-300 whitespace-pre-wrap">{announcement.content}</p>
+            </div>
+        )}
+
+        <Clock />
+        
+        <div className="text-center">
+            <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
+            <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
+        </div>
+        
+        <div className="text-gray-500">
+            新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
+        </div>
+    </div>
+  );
+
+  const renderQrScreen = () => {
+    if (!qrToken) return null;
+    const url = `${process.env.NEXT_PUBLIC_APP_URL}/register/${qrToken}`;
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(url).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            // You can add a toast notification here to inform the user about the failure.
+        });
+    };
+
+    return (
+      <div className="text-center flex flex-col items-center">
+        <p className="text-4xl font-bold mb-4">QRコード登録</p>
+        <div className="bg-white p-4 rounded-lg">
+            <Image
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(url)}`}
+                width={256}
+                height={256}
+                alt="QR Code"
+                data-ai-hint="qr code"
+                priority
+            />
+        </div>
+        <div className="relative mt-4 w-full max-w-sm">
+            <input 
+                readOnly
+                value={url}
+                className="bg-gray-800 p-2 pr-10 rounded-md font-mono text-sm w-full border-none text-white"
+            />
+            <button
+                onClick={handleCopy}
+                className="absolute inset-y-0 right-0 flex items-center pr-3"
+            >
+                {isCopied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5 text-gray-400" />}
+            </button>
+        </div>
+        
+        <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取るか、URLをコピーして登録を完了してください。</p>
+        <QrTimer />
+        <p className="text-sm text-gray-500 mt-4">※登録完了後、この画面は自動的に戻ります</p>
+      </div>
+    );
+  };
 
   const renderState = () => {
     switch (kioskState) {
@@ -225,23 +308,7 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
           </div>
         );
       case 'qr':
-        return (
-          <div className="text-center flex flex-col items-center">
-            <p className="text-4xl font-bold mb-6">QRコード登録</p>
-            <div className="bg-white p-4 rounded-lg">
-                <Image
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${process.env.NEXT_PUBLIC_APP_URL}/register/${qrToken}`}
-                    width={256}
-                    height={256}
-                    alt="QR Code"
-                    data-ai-hint="qr code"
-                />
-            </div>
-            <p className="mt-6 text-xl max-w-md">スマートフォンでQRコードを読み取り、Discord認証を完了してください。</p>
-            <QrTimer />
-            <p className="text-sm text-gray-500 mt-4">※登録完了後、この画面は自動的に戻ります</p>
-          </div>
-        );
+        return renderQrScreen();
       case 'processing':
          return (
              <div className="text-center flex flex-col items-center">
@@ -249,56 +316,15 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
              </div>
          )
       case 'input':
-        const displayMessage = kioskState === 'register' ? '新規カード登録' : '入力中...';
-        return (
-            <div className="text-center flex flex-col items-center">
-                <p className="text-2xl text-gray-400 mb-4">{displayMessage}</p>
-                <p className="text-4xl font-mono bg-gray-800 px-4 py-2 rounded-lg">{inputValue}</p>
-                <p className="text-lg text-gray-500 mt-4">そのまま入力を続けてEnterを押してください</p>
-            </div>
-        )
       case 'idle':
       default:
-        return (
-          <div className="flex flex-col items-center justify-between h-full w-full py-8">
-            <div className="w-full flex justify-between items-center px-8 text-xl">
-              <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
-               {isOnline !== undefined && (
-                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
-                  {isOnline ? <Wifi size={16}/> : <WifiOff size={16}/>}
-                  <span>{isOnline ? 'オンライン' : 'オフライン'}</span>
-                </div>
-              )}
-            </div>
-
-            {announcement && (
-              <div className="w-full max-w-4xl p-6 bg-blue-500/10 border border-blue-400/30 rounded-lg text-center">
-                <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-3">
-                  <Bell className="text-blue-300" />
-                  {announcement.title}
-                </h2>
-                <p className="text-lg text-gray-300 whitespace-pre-wrap">{announcement.content}</p>
-              </div>
-            )}
-
-            <Clock />
-            
-            <div className="text-center">
-              <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
-              <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
-            </div>
-            
-            <div className="text-gray-500">
-                新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
-            </div>
-          </div>
-        );
+        return <IdleScreen />;
     }
   };
 
   return (
-    <div className="w-full h-full bg-gray-900 text-white flex items-center justify-center">
-      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg p-8 shadow-2xl relative flex items-center justify-center" onClick={() => inputRef.current?.focus()}>
+    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-body">
+      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl relative flex flex-col items-center justify-center overflow-hidden" onClick={() => inputRef.current?.focus()}>
         <form onSubmit={handleFormSubmit}>
           <input
             ref={inputRef}
@@ -310,9 +336,18 @@ export default function KioskContainer({ initialAnnouncement, teams }: KioskCont
             className="opacity-0 absolute w-0 h-0"
           />
         </form>
-        <div className="w-full h-full flex flex-col items-center justify-center">
+        <div className="w-full h-full flex flex-col items-center justify-center p-4">
           {renderState()}
         </div>
+        
+        {kioskState === 'input' && (
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-4xl mx-auto text-center">
+              <p className="text-lg text-gray-400 mb-2">入力中...</p>
+              <p className="text-2xl font-mono bg-gray-800 px-4 py-2 rounded-lg inline-block">{inputValue}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

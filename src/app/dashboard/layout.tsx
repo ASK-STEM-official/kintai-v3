@@ -91,8 +91,17 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
-  const isAdmin = profile?.role === 1;
+  // Check if a user profile exists in the public.users table
+  const { data: profile, error } = await supabase.from('users').select('id, role').eq('id', user.id).single();
+
+  // If no profile exists, the user has not completed registration.
+  if (!profile) {
+    // Redirect to a page that explains they need to register their card.
+    // The register page with a dummy token will show an error, which is appropriate here.
+    return redirect("/register/unregistered");
+  }
+
+  const isAdmin = profile.role === 1;
 
   return (
     <SidebarProvider>
