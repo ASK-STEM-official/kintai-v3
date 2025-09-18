@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   }
 
   const discordToken = data.session.provider_token;
-  const requiredServerId = process.env.NEXT_PUBLIC_DISCORD_SERVER_ID;
+  const requiredServerId = process.env.DISCORD_SERVER_ID;
 
   if (!requiredServerId) {
     console.error('DISCORD_SERVER_ID is not set in environment variables.');
