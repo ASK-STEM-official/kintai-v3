@@ -264,40 +264,12 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      },
-      daily_team_attendance: {
-        Row: {
-          date: string | null
-          team_id: number | null
-          type: string | null
-          user_id: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "attendances_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "users_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
       }
     }
     Functions: {
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
-      },
-       get_users_currently_in: {
-        Args: Record<PropertyKey, never>
-        Returns: { id: string }[]
       }
     }
     Enums: never

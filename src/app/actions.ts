@@ -273,29 +273,36 @@ export async function deleteTeam(id: number) {
 
 export async function forceLogoutAll() {
     const supabase = createSupabaseAdminClient();
-    const { data: users, error: usersError } = await supabase
-        .rpc('get_users_currently_in');
-
-    if (usersError) {
-        return { success: false, message: usersError.message };
-    }
     
-    if (!users || users.length === 0) {
+    // Get all users who are currently 'in'
+    const { data: inUsers, error: inUsersError } = await supabase
+        .from('users')
+        .select('id, last_attendance_type:attendances!inner(type)')
+        .order('timestamp', { foreignTable: 'attendances', ascending: false })
+        .limit(1, { foreignTable: 'attendances' });
+
+    if (inUsersError) {
+        return { success: false, message: inUsersError.message };
+    }
+
+    const usersToLogOut = inUsers.filter(u => u.last_attendance_type[0]?.type === 'in');
+
+    if (usersToLogOut.length === 0) {
         return { success: true, message: '現在活動中のユーザーはいません。', count: 0 };
     }
 
-    const attendanceRecords = users.map(u => ({ user_id: u.id, type: 'out' as const }));
+    const attendanceRecords = usersToLogOut.map(u => ({ user_id: u.id, type: 'out' as const }));
     const { error: insertError } = await supabase.from('attendances').insert(attendanceRecords);
 
     if (insertError) {
         return { success: false, message: insertError.message };
     }
 
-    await supabase.from('daily_logout_logs').insert({ affected_count: users.length, status: 'success' });
+    await supabase.from('daily_logout_logs').insert({ affected_count: usersToLogOut.length, status: 'success' });
 
     revalidatePath('/admin');
     revalidatePath('/dashboard/teams', 'page');
-    return { success: true, message: `${users.length}人のユーザーを強制退勤させました。`, count: users.length };
+    return { success: true, message: `${usersToLogOut.length}人のユーザーを強制退勤させました。`, count: usersToLogOut.length };
 }
 
 export async function forceToggleAttendance(userId: string) {
@@ -333,11 +340,13 @@ export async function getTeamWithMembersStatus(teamId: number) {
 
     const { data: members, error: membersError } = await supabase
         .from('users')
-        .select('*, latest_attendance: daily_team_attendance!inner(type)')
+        .select('id, display_name, generation, latest_attendance:attendances(type)')
         .eq('team_id', teamId)
+        .order('timestamp', { foreignTable: 'attendances', ascending: false })
+        .limit(1, { foreignTable: 'attendances' })
         .order('generation', { ascending: false })
         .order('display_name');
-
+        
     return { team, members: members || [] };
 }
 
