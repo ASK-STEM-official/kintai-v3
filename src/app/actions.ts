@@ -380,13 +380,15 @@ export async function getMonthlyAttendanceSummary(month: Date) {
 }
 
 
-export async function calculateTotalActivityTime(userId: string): Promise<number> {
+export async function calculateTotalActivityTime(userId: string, days: number): Promise<number> {
   const supabase = createSupabaseServerClient();
+  const startDate = subDays(new Date(), days).toISOString();
 
   const { data: attendances, error } = await supabase
     .from('attendances')
     .select('type, timestamp')
     .eq('user_id', userId)
+    .gte('timestamp', startDate)
     .order('timestamp', { ascending: true });
 
   if (error || !attendances) {
@@ -637,23 +639,44 @@ export async function getTeamWithMembersStatus(teamId: number) {
         id,
         display_name,
         generation,
-        discord_id,
-        latest_attendance:attendances(type, timestamp)
-    `)
-    .eq('team_id', teamId)
-    .order('timestamp', { foreignTable: 'attendances', ascending: false })
-    .limit(1, { foreignTable: 'attendances' });
-
+        discord_id
+    `).eq('team_id', teamId);
+    
     if (membersError) {
-        console.error("Error fetching team members with status:", membersError);
+        console.error("Error fetching team members:", membersError);
         return { team, members: [], stats: null, error: membersError.message };
     }
+    
+    const memberIds = members.map(m => m.id);
+    
+    const { data: latestAttendances, error: attendanceError } = await supabase
+        .from('attendances')
+        .select('user_id, type, timestamp')
+        .in('user_id', memberIds)
+        .order('timestamp', { ascending: false });
 
-    const membersWithStatus = members.map(member => ({
-        ...member,
-        status: (member.latest_attendance[0]?.type as 'in' | 'out') || 'out',
-        timestamp: member.latest_attendance[0]?.timestamp || null,
-    }));
+    if (attendanceError) {
+         console.error("Error fetching latest attendances:", attendanceError);
+         return { team, members: [], stats: null, error: attendanceError.message };
+    }
+
+    const statusMap = new Map<string, { type: 'in' | 'out', timestamp: string | null }>();
+    if (latestAttendances) {
+        for (const att of latestAttendances) {
+            if (!statusMap.has(att.user_id)) {
+                statusMap.set(att.user_id, { type: att.type as 'in' | 'out', timestamp: att.timestamp });
+            }
+        }
+    }
+
+    const membersWithStatus = members.map(member => {
+        const latest = statusMap.get(member.id);
+        return {
+            ...member,
+            status: latest?.type || 'out',
+            timestamp: latest?.timestamp || null,
+        }
+    });
     
     const stats = await getTeamStats(teamId);
 

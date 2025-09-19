@@ -101,6 +101,7 @@ export default async function DashboardLayout({
   const { data: profile, error } = await supabase.from('users').select('id, role, team_id').eq('id', user.id).single();
 
   if (!profile) {
+    await supabase.auth.signOut();
     return redirect("/register/unregistered");
   }
 
