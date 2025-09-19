@@ -6,12 +6,18 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ChevronRight, Users2 } from "lucide-react"
-import { Tables } from "@/lib/types"
 import { useState } from "react"
+import { Badge } from "@/components/ui/badge"
 
+interface TeamWithStatus {
+    id: number;
+    name: string;
+    current: number;
+    total: number;
+}
 interface DashboardNavProps {
   isAdmin: boolean;
-  teams: Tables<'teams'>[];
+  teams: TeamWithStatus[];
   userTeamId?: number | null;
 }
 
@@ -45,7 +51,10 @@ export default function DashboardNav({ isAdmin, teams, userTeamId }: DashboardNa
                   {visibleTeams.map(team => (
                     <SidebarMenuSubItem key={team.id}>
                       <SidebarMenuSubButton asChild isActive={pathname === `/dashboard/teams/${team.id}`}>
-                        <Link href={`/dashboard/teams/${team.id}`}>{team.name}</Link>
+                        <Link href={`/dashboard/teams/${team.id}`} className="flex justify-between items-center w-full">
+                          <span>{team.name}</span>
+                          <Badge variant={team.current > 0 ? "default" : "secondary"} className="h-5">{team.current}/{team.total}</Badge>
+                        </Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   ))}

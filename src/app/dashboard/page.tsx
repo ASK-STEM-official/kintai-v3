@@ -15,6 +15,7 @@ import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./_components/AttendanceCalendar";
 import ClientRelativeTime from "./_components/ClientRelativeTime";
 import { calculateTotalActivityTime } from "../actions";
+import AdminAttendanceCalendar from "./_components/AdminAttendanceCalendar";
 
 export const dynamic = 'force-dynamic';
 
@@ -32,13 +33,6 @@ export default async function DashboardPage() {
     const { data: attendances } = attendancesResult;
 
     // 1. Correctly count distinct attendance days for the user
-    const { count: totalIn, error: totalInError } = await supabase
-      .from('attendances')
-      .select('date', { count: 'exact', head: true })
-      .eq('user_id', user!.id)
-      .eq('type', 'in');
-
-    // To get distinct days, we fetch the dates and count them in code.
     const { data: distinctDates, error: distinctDatesError } = await supabase
       .from('attendances')
       .select('date')
@@ -58,6 +52,8 @@ export default async function DashboardPage() {
     // 3. Calculate attendance rate based on the new logic
     const attendanceRate = totalClubDays > 0 ? (userAttendanceDays / totalClubDays) * 100 : 0;
     
+    const isAdmin = profile?.role === 1;
+
   return (
     <div className="space-y-6">
         <div className="flex justify-between items-start">
@@ -154,7 +150,7 @@ export default async function DashboardPage() {
           <CardTitle>出勤カレンダー</CardTitle>
         </CardHeader>
         <CardContent>
-          <AttendanceCalendar userId={user!.id} />
+          {isAdmin ? <AdminAttendanceCalendar /> : <AttendanceCalendar userId={user!.id} />}
         </CardContent>
       </Card>
       </div>

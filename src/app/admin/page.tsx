@@ -5,7 +5,7 @@ import AnnouncementsTab from "./_components/AnnouncementsTab";
 import LogsTab from "./_components/LogsTab";
 import TeamsTab from "./_components/TeamsTab";
 import SystemTab from "./_components/SystemTab";
-import { getAllUsers, getAllTeams, getAllAnnouncements, getAllUserEditLogs, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
+import { getAllUsersWithStatus, getAllTeams, getAllAnnouncements, getAllUserEditLogs, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
 import { User, Annoyed, History, AlertCircle, Users2, Power, FilePenLine } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import TempRegistrationsTab from "./_components/TempRegistrationsTab";
@@ -24,7 +24,7 @@ export default async function AdminPage() {
     dailyLogoutLogsResult,
     tempRegistrationsResult,
   ] = await Promise.all([
-    getAllUsers(),
+    getAllUsersWithStatus(),
     getAllTeams(),
     getAllAnnouncements(),
     getAllUserEditLogs(),
@@ -62,7 +62,7 @@ export default async function AdminPage() {
       )}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6">
           <TabsTrigger value="users">
             <User className="mr-2 h-4 w-4" />
             ユーザー管理

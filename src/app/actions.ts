@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
-import { differenceInSeconds, startOfDay, endOfDay, subDays, format } from 'date-fns';
+import { differenceInSeconds, startOfDay, endOfDay, subDays, format, startOfMonth, endOfMonth } from 'date-fns';
 
 type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
@@ -206,17 +206,15 @@ export async function signOut() {
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
   const supabase = createSupabaseServerClient();
-  const { startOfMonth, endOfMonth } = {
-    startOfMonth: new Date(month.getFullYear(), month.getMonth(), 1),
-    endOfMonth: new Date(month.getFullYear(), month.getMonth() + 1, 0)
-  };
+  const start = startOfMonth(month);
+  const end = endOfMonth(month);
   
   const { data, error } = await supabase
     .from('attendances')
     .select('date, type')
     .eq('user_id', userId)
-    .gte('date', startOfMonth.toISOString().split('T')[0])
-    .lte('date', endOfMonth.toISOString().split('T')[0])
+    .gte('date', format(start, 'yyyy-MM-dd'))
+    .lte('date', format(end, 'yyyy-MM-dd'))
     .order('timestamp', { ascending: true });
 
   if (error) {
@@ -235,6 +233,79 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
     status: dailyStatus[date]
   }));
 }
+
+export async function getMonthlyAttendanceSummary(month: Date) {
+  const supabase = createSupabaseAdminClient();
+  const start = startOfMonth(month);
+  const end = endOfMonth(month);
+
+  const { data, error } = await supabase
+    .from('attendances')
+    .select('date, users (generation)')
+    .eq('type', 'in')
+    .gte('date', format(start, 'yyyy-MM-dd'))
+    .lte('date', format(end, 'yyyy-MM-dd'));
+
+  if (error) {
+    console.error('Error fetching monthly attendance summary:', error);
+    return {};
+  }
+  
+  const summary: Record<string, { total: number; byGeneration: Record<number, number> }> = {};
+
+  for (const record of data) {
+    const { date, users } = record;
+    if (!date || !users) continue;
+    
+    if (!summary[date]) {
+      summary[date] = { total: 0, byGeneration: {} };
+    }
+    
+    // This logic assumes one 'in' record per user per day for counting.
+    // If a user can have multiple 'in' records a day, we need to count unique users.
+    // Let's refine this to count unique users per day.
+  }
+
+  // To count unique users, we need to process the data differently
+  const dailyUsers: Record<string, Map<string, number>> = {};
+  const { data: uniqueData, error: uniqueError } = await supabase
+    .from('attendances')
+    .select('date, user_id, users(generation)')
+    .eq('type', 'in')
+    .gte('date', format(start, 'yyyy-MM-dd'))
+    .lte('date', format(end, 'yyyy-MM-dd'));
+
+  if (uniqueError) {
+    console.error('Error fetching monthly unique attendance summary:', uniqueError);
+    return {};
+  }
+
+  if (uniqueData) {
+    for (const record of uniqueData) {
+        const { date, user_id, users } = record;
+        if (!date || !user_id || !users) continue;
+
+        if (!dailyUsers[date]) {
+            dailyUsers[date] = new Map();
+        }
+        if (!dailyUsers[date].has(user_id)) {
+            dailyUsers[date].set(user_id, users.generation);
+        }
+    }
+  }
+
+
+  Object.keys(dailyUsers).forEach(date => {
+      const usersMap = dailyUsers[date];
+      summary[date] = { total: usersMap.size, byGeneration: {} };
+      usersMap.forEach((generation) => {
+          summary[date].byGeneration[generation] = (summary[date].byGeneration[generation] || 0) + 1;
+      });
+  });
+  
+  return summary;
+}
+
 
 export async function calculateTotalActivityTime(userId: string): Promise<number> {
   const supabase = createSupabaseServerClient();
@@ -269,15 +340,82 @@ export async function calculateTotalActivityTime(userId: string): Promise<number
 }
 
 // Admin actions
-export async function getAllUsers() {
+export async function getAllUsersWithStatus() {
     const supabase = createSupabaseAdminClient();
-    return supabase.from('users').select('*, teams(id, name)');
+    const { data: users, error: usersError } = await supabase.from('users').select('*, teams(id, name)');
+    if (usersError) return { data: [], error: usersError };
+
+    const userIds = users.map(u => u.id);
+    const { data: latestAttendances, error: attendanceError } = await supabase
+        .from('attendances')
+        .select('user_id, type')
+        .in('user_id', userIds)
+        .order('timestamp', { ascending: false });
+    
+    if (attendanceError) return { data: users, error: null }; // Return users without status on error
+
+    const statusMap = new Map<string, string>();
+    latestAttendances.forEach(att => {
+        if (!statusMap.has(att.user_id)) {
+            statusMap.set(att.user_id, att.type);
+        }
+    });
+
+    const usersWithStatus = users.map(u => ({
+        ...u,
+        status: statusMap.get(u.id) || 'out'
+    }));
+    
+    return { data: usersWithStatus, error: null };
 }
 
 export async function getAllTeams() {
     const supabase = createSupabaseAdminClient();
     return supabase.from('teams').select('*').order('name');
 }
+
+export async function getTeamsWithMemberStatus() {
+    const supabase = createSupabaseAdminClient();
+    const { data: teams, error: teamsError } = await supabase.from('teams').select('id, name').order('name');
+    if (teamsError) return [];
+
+    const { data: users, error: usersError } = await supabase.from('users').select('id, team_id');
+    if (usersError) return teams.map(t => ({ ...t, current: 0, total: 0 }));
+    
+    const userIds = users.map(u => u.id);
+     const { data: latestAttendances, error: attendanceError } = await supabase
+        .from('attendances')
+        .select('user_id, type')
+        .in('user_id', userIds)
+        .order('timestamp', { ascending: false });
+
+    const statusMap = new Map<string, string>();
+    if (latestAttendances) {
+        latestAttendances.forEach(att => {
+            if (!statusMap.has(att.user_id)) {
+                statusMap.set(att.user_id, att.type);
+            }
+        });
+    }
+
+    const memberStatusByTeam = users.reduce((acc, user) => {
+        if (!user.team_id) return acc;
+        if (!acc[user.team_id]) {
+            acc[user.team_id] = { current: 0, total: 0 };
+        }
+        acc[user.team_id].total++;
+        if (statusMap.get(user.id) === 'in') {
+            acc[user.team_id].current++;
+        }
+        return acc;
+    }, {} as Record<number, { current: number; total: number }>);
+
+    return teams.map(team => ({
+        ...team,
+        ...memberStatusByTeam[team.id] || { current: 0, total: 0 },
+    }));
+}
+
 
 export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
     const supabase = createSupabaseAdminClient();
@@ -397,6 +535,7 @@ export async function forceToggleAttendance(userId: string) {
 
     revalidatePath('/admin');
     revalidatePath('/dashboard/teams', 'page');
+    revalidatePath('/dashboard/layout');
     return { success: true, message: `ユーザーを強制的に${newType === 'in' ? '出勤' : '退勤'}させました。` };
 }
 
@@ -541,7 +680,7 @@ export async function getMonthlyTeamAttendanceStats(teamId: number, days: number
     }, {} as Record<string, Set<string>>);
     
     const dailyRates = Object.values(dailyAttendanceCount).map(users => (users.size / memberIds.length) * 100);
-    const averageRate = dailyRates.reduce((sum, rate) => sum + rate, 0) / totalActivityDays;
+    const averageRate = dailyRates.length > 0 ? dailyRates.reduce((sum, rate) => sum + rate, 0) / dailyRates.length : 0;
 
     return averageRate;
 }

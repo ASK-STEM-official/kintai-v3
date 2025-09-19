@@ -1,4 +1,4 @@
-import { signOut, getAllTeams } from "@/app/actions";
+import { signOut, getTeamsWithMemberStatus } from "@/app/actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
+import { Menu, Moon, Sun } from "lucide-react";
 import DashboardNav from "./_components/DashboardNav";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 async function UserProfile({ user }: { user: any }) {
   const { data: profile } = await createSupabaseServerClient().from('users').select('display_name').eq('id', user.id).single();
@@ -41,14 +42,17 @@ async function UserProfile({ user }: { user: any }) {
 }
 
 async function MainSidebar({ user, isAdmin, userTeamId }: { user: any, isAdmin: boolean, userTeamId: number | null }) {
-  const { data: teams } = await getAllTeams();
+  const teams = await getTeamsWithMemberStatus();
 
   return (
     <>
       <SidebarHeader>
-        <div className="flex items-center gap-2">
-            <Icons.Logo className="w-6 h-6 text-primary" />
-            <h2 className="font-semibold text-lg">AttendanceZen</h2>
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                <Icons.Logo className="w-6 h-6 text-primary" />
+                <h2 className="font-semibold text-lg">AttendanceZen</h2>
+            </div>
+            <ThemeToggle />
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
@@ -76,7 +80,7 @@ function MobileHeader({ user, isAdmin, userTeamId }: { user: any, isAdmin: boole
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
-              {/* Mobile header can have other items like a title if needed */}
+              <ThemeToggle />
             </div>
         </header>
     )
@@ -109,7 +113,7 @@ export default async function DashboardLayout({
       </Sidebar>
       <div className="flex flex-col sm:pl-64">
         <MobileHeader user={user} isAdmin={isAdmin} userTeamId={profile.team_id} />
-        <main className="flex-1 p-4 sm:p-6 bg-secondary/50">
+        <main className="flex-1 p-4 sm:p-6 bg-secondary/50 min-h-screen">
           {children}
         </main>
       </div>

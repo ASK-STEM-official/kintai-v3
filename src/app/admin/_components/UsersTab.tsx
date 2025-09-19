@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useTransition } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -18,11 +18,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Edit, Clock, ArrowUpDown, Search } from "lucide-react"
+import { Edit, ArrowUpDown, Search } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,13 +32,16 @@ import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-type UserWithTeam = Tables<'users'> & { teams: { id: number, name: string } | null };
+type UserWithTeamAndStatus = Tables<'users'> & {
+    teams: { id: number, name: string } | null;
+    status: 'in' | 'out';
+};
 
-type SortKey = keyof UserWithTeam | 'teams.name';
+type SortKey = keyof UserWithTeamAndStatus | 'teams.name';
 type SortDirection = 'asc' | 'desc';
 
 interface UsersTabProps {
-    users: UserWithTeam[];
+    users: UserWithTeamAndStatus[];
     teams: Tables<'teams'>[];
     currentUser: User;
 }
@@ -74,26 +76,31 @@ const SortableHeader = ({
 };
 
 
-export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
+export default function UsersTab({ users: initialUsers, teams, currentUser }: UsersTabProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<UserWithTeam | null>(null);
+    const [editingUser, setEditingUser] = useState<UserWithTeamAndStatus | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'display_name', direction: 'asc' });
+    const [users, setUsers] = useState(initialUsers);
+    const [isToggling, startToggleTransition] = useTransition();
 
-    const handleEdit = (user: UserWithTeam) => {
+    const handleEdit = (user: UserWithTeamAndStatus) => {
         setEditingUser(user);
         setDialogOpen(true);
     }
     
-    const handleForceToggle = async (userId: string) => {
-        const result = await forceToggleAttendance(userId);
-        if (result.success) {
-            toast({ title: "成功", description: result.message });
-        } else {
-            toast({ variant: "destructive", title: "エラー", description: result.message });
-        }
+    const handleForceToggle = (userId: string) => {
+        startToggleTransition(async () => {
+            const result = await forceToggleAttendance(userId);
+            if (result.success) {
+                toast({ title: "成功", description: result.message });
+                setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, status: u.status === 'in' ? 'out' : 'in' } : u));
+            } else {
+                toast({ variant: "destructive", title: "エラー", description: result.message });
+            }
+        });
     }
 
     const handleSort = (key: SortKey) => {
@@ -117,8 +124,13 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                 valA = a.teams?.name || '';
                 valB = b.teams?.name || '';
             } else {
-                valA = a[key as keyof UserWithTeam];
-                valB = b[key as keyof UserWithTeam];
+                valA = a[key as keyof UserWithTeamAndStatus];
+                valB = b[key as keyof UserWithTeamAndStatus];
+            }
+            
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                valA = valA.toLowerCase();
+                valB = valB.toLowerCase();
             }
 
             if (valA < valB) return sort.direction === 'asc' ? -1 : 1;
@@ -153,7 +165,7 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
             
             const changedFields = Object.keys(updatedData).filter(key => {
                 const fieldKey = key as keyof typeof updatedData;
-                return String(updatedData[fieldKey]) !== String(editingUser[fieldKey]);
+                return String(updatedData[fieldKey]) !== String(editingUser[fieldKey as keyof UserWithTeamAndStatus]);
             });
 
             for (const fieldName of changedFields) {
@@ -162,7 +174,7 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                     target_user_id: editingUser.id,
                     editor_user_id: currentUser.id,
                     field_name: key,
-                    old_value: String(editingUser[key]),
+                    old_value: String(editingUser[key as keyof UserWithTeamAndStatus]),
                     new_value: String(updatedData[key]),
                 });
             }
@@ -201,48 +213,44 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                         <SortableHeader sortKey="teams.name" currentSort={sort} onSort={handleSort}>班</SortableHeader>
                          <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>期生</SortableHeader>
                         <SortableHeader sortKey="role" currentSort={sort} onSort={handleSort}>役割</SortableHeader>
+                        <SortableHeader sortKey="status" currentSort={sort} onSort={handleSort}>現在の状態</SortableHeader>
                         <SortableHeader sortKey="card_id" currentSort={sort} onSort={handleSort}>カードID</SortableHeader>
-                        <SortableHeader sortKey="is_active" currentSort={sort} onSort={handleSort}>状態</SortableHeader>
+                        <SortableHeader sortKey="is_active" currentSort={sort} onSort={handleSort}>アカウント</SortableHeader>
                         <TableHead>アクション</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {sortedAndFilteredUsers?.map(user => (
-                        <TableRow key={user.id}>
+                        <TableRow key={user.id} data-state={!user.is_active ? "disabled" : ""}>
                             <TableCell className="font-medium">{user.display_name}</TableCell>
                             <TableCell>{user.teams?.name || '未所属'}</TableCell>
-                             <TableCell>{user.generation}期生</TableCell>
+                            <TableCell>{user.generation}期生</TableCell>
                             <TableCell>
                                 <Badge variant={user.role === 1 ? "destructive" : "outline"}>{user.role === 1 ? '管理者' : '部員'}</Badge>
+                            </TableCell>
+                             <TableCell>
+                                <Badge variant={user.status === 'in' ? 'default' : 'secondary'}>{user.status === 'in' ? '出勤中' : '退勤'}</Badge>
                             </TableCell>
                             <TableCell className="font-mono">{user.card_id}</TableCell>
                              <TableCell>
                                 <Badge variant={user.is_active ? "default" : "secondary"}>{user.is_active ? '有効' : '無効'}</Badge>
                             </TableCell>
                             <TableCell className="space-x-2 flex items-center">
+                                <Button size="sm" variant="outline" onClick={() => handleForceToggle(user.id)} disabled={isToggling}>
+                                    {user.status === 'in' ? '強制退勤させる' : '強制出勤させる'}
+                                </Button>
                                 <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button size="icon" variant="ghost" onClick={() => handleForceToggle(user.id)}>
-                                            <Clock className="h-4 w-4" />
-                                            <span className="sr-only">Force Toggle Attendance</span>
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>強制的に出退勤を切り替え</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button size="icon" variant="ghost" onClick={() => handleEdit(user)}>
-                                            <Edit className="h-4 w-4" />
-                                            <span className="sr-only">Edit user</span>
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>ユーザー情報を編集</p>
-                                    </TooltipContent>
-                                </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button size="icon" variant="ghost" onClick={() => handleEdit(user)}>
+                                                <Edit className="h-4 w-4" />
+                                                <span className="sr-only">Edit user</span>
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>ユーザー情報を編集</p>
+                                        </TooltipContent>
+                                    </Tooltip>
                                 </TooltipProvider>
                             </TableCell>
                         </TableRow>

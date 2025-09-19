@@ -46,15 +46,17 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
   return (
     <div>
         <div className="flex justify-between items-center mb-2 px-1">
-            <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
-                <ChevronLeft />
-            </Button>
-            <h3 className="text-sm font-semibold text-center">
+            <h3 className="text-lg font-semibold">
                 {format(date, 'yyyy年 M月', { locale: ja })}
             </h3>
-             <Button variant="ghost" size="icon" onClick={goToNextMonth}>
-                <ChevronRight />
-            </Button>
+            <div className='flex items-center gap-1'>
+              <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
+                  <ChevronLeft />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={goToNextMonth}>
+                  <ChevronRight />
+              </Button>
+            </div>
         </div>
       <Calendar
         mode="multiple"

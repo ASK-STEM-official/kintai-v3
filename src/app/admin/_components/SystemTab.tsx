@@ -52,7 +52,7 @@ export default function SystemTab() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Card className="bg-destructive/10 border-destructive">
+        <Card className="bg-destructive/10 border-destructive max-w-md">
           <CardHeader>
             <CardTitle className="text-destructive text-lg flex items-center gap-2">
               <LogOut /> 全員強制ログアウト

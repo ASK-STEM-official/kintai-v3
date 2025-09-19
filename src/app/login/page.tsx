@@ -5,10 +5,9 @@ import { signInWithDiscord } from "@/app/actions"
 import { Icons } from "@/components/icons"
 import { useSearchParams } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Moon, Sun } from "lucide-react"
 import { Suspense } from "react"
-
-export const dynamic = 'force-dynamic'
+import { useTheme } from "next-themes"
 
 function LoginContent() {
     const searchParams = useSearchParams();
@@ -46,10 +45,27 @@ function LoginContent() {
     )
 }
 
+function ThemeToggleLogin() {
+    const { setTheme, theme } = useTheme();
+    return (
+        <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            className="absolute top-4 right-4"
+        >
+            <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            <span className="sr-only">Toggle theme</span>
+        </Button>
+    )
+}
+
 
 export default function LoginPage() {
     return (
-        <main className="w-full h-screen flex flex-col items-center justify-center bg-background p-4">
+        <main className="w-full h-screen flex flex-col items-center justify-center bg-background p-4 relative">
+            <ThemeToggleLogin />
             <Suspense>
               <LoginContent />
             </Suspense>
