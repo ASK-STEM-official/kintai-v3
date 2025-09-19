@@ -5,6 +5,7 @@ import { Database, Tables, TablesInsert, TablesUpdate } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { randomUUID } from 'crypto';
 
 type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
@@ -13,7 +14,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('*, teams(*)')
+    .select('*, teams (id, name)')
     .eq('card_id', cardId)
     .single();
 
@@ -52,7 +53,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
   const supabase = createSupabaseAdminClient();
-  const token = `qr_${crypto.randomUUID()}`;
+  const token = `qr_${randomUUID()}`;
   const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
   const { data: existingUser } = await supabase.from('users').select('id').eq('card_id', cardId).single();
@@ -274,24 +275,43 @@ export async function deleteTeam(id: number) {
 export async function forceLogoutAll() {
     const supabase = createSupabaseAdminClient();
     
-    // Get all users who are currently 'in'
-    const { data: inUsers, error: inUsersError } = await supabase
-        .from('users')
-        .select('id, last_attendance_type:attendances!inner(type)')
-        .order('timestamp', { foreignTable: 'attendances', ascending: false })
-        .limit(1, { foreignTable: 'attendances' });
+    // 1. Get user IDs that are currently 'in'
+    const { data: currentlyIn, error: currentlyInError } = await supabase
+        .from('attendances')
+        .select('user_id')
+        .order('timestamp', { ascending: false });
 
-    if (inUsersError) {
-        return { success: false, message: inUsersError.message };
+    if (currentlyInError) {
+        console.error('Error fetching latest attendance:', currentlyInError);
+        return { success: false, message: `DBエラー: ${currentlyInError.message}` };
     }
 
-    const usersToLogOut = inUsers.filter(u => u.last_attendance_type[0]?.type === 'in');
+    // Determine the latest status for each user
+    const userStatus: { [key: string]: string } = {};
+    if (currentlyIn) {
+      for (const att of currentlyIn) {
+        if (!userStatus[att.user_id]) {
+          const { data: latest, error } = await supabase
+            .from('attendances')
+            .select('type')
+            .eq('user_id', att.user_id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .single();
+          if (latest) {
+            userStatus[att.user_id] = latest.type;
+          }
+        }
+      }
+    }
+    
+    const usersToLogOut = Object.keys(userStatus).filter(userId => userStatus[userId] === 'in');
 
     if (usersToLogOut.length === 0) {
         return { success: true, message: '現在活動中のユーザーはいません。', count: 0 };
     }
 
-    const attendanceRecords = usersToLogOut.map(u => ({ user_id: u.id, type: 'out' as const }));
+    const attendanceRecords = usersToLogOut.map((userId: string) => ({ user_id: userId, type: 'out' as const }));
     const { error: insertError } = await supabase.from('attendances').insert(attendanceRecords);
 
     if (insertError) {
