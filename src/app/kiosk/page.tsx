@@ -349,7 +349,7 @@ export default function KioskPage() {
 
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans">
-      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl relative flex flex-col items-center justify-center overflow-hidden">
+      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
           {renderState()}
         </div>
@@ -366,4 +366,3 @@ export default function KioskPage() {
     </div>
   );
 }
-
