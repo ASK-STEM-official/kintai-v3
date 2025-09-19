@@ -9,7 +9,7 @@ type Team = Database['public']['Tables']['teams']['Row'];
 
 export default async function KioskPage() {
   const supabase = createSupabaseServerClient();
-  const { data: initialAnnouncement } = await supabase.from('announcements').select('*').eq('is_current', true).single();
+  const { data: initialAnnouncement } = await supabase.from('announcements').select('*').eq('is_current', true).limit(1).maybeSingle();
   const { data: teamsData } = await supabase.from('teams').select('*');
   const teams = teamsData || [];
 
