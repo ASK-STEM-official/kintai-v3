@@ -11,8 +11,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import type { Tables } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Clock } from 'lucide-react';
 import { useFormStatus } from 'react-dom';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+
 
 function SubmitButton() {
     const { pending } = useFormStatus();
@@ -156,9 +159,13 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                     )}
                     <Card className="bg-muted/50">
                         <CardContent className="p-4 space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">カードID:</span>
+                             <div className="flex justify-between">
+                                <span className="text-muted-foreground">📇 カードID:</span>
                                 <span className="font-mono font-medium">{tempReg.card_id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-4 h-4"/>読み取り日時:</span>
+                                <span className="font-medium">{format(new Date(tempReg.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}</span>
                             </div>
                         </CardContent>
                     </Card>

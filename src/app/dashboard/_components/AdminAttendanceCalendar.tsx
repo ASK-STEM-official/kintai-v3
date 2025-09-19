@@ -5,11 +5,16 @@ import { Calendar } from '@/components/ui/calendar';
 import { getMonthlyAttendanceSummary } from '@/app/actions';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-type AttendanceSummary = Record<string, { total: number; byGeneration: Record<number, number> }>;
+type DailySummary = {
+  total: number;
+  byTeam: Record<string, { name: string; total: number; byGeneration: Record<number, number> }>;
+};
+type AttendanceSummary = Record<string, DailySummary>;
 
 function DayCell({ day, summary }: { day: Date, summary: AttendanceSummary | null }) {
     const dateKey = format(day, 'yyyy-MM-dd');
@@ -17,37 +22,53 @@ function DayCell({ day, summary }: { day: Date, summary: AttendanceSummary | nul
 
     if (!daySummary || daySummary.total === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-full w-full">
-                <time dateTime={day.toISOString()}>{day.getDate()}</time>
+            <div className="flex flex-col h-full w-full">
+                <time dateTime={day.toISOString()} className="pt-1">{day.getDate()}</time>
             </div>
         );
     }
     
-    const sortedGenerations = Object.entries(daySummary.byGeneration)
-      .sort(([a], [b]) => Number(b) - Number(a));
-
+    const sortedTeams = Object.values(daySummary.byTeam).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
     return (
         <Popover>
             <PopoverTrigger asChild>
-                <div className="flex flex-col items-center justify-center h-full w-full cursor-pointer">
-                    <time dateTime={day.toISOString()}>{day.getDate()}</time>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                <div className="flex flex-col h-full w-full cursor-pointer">
+                    <time dateTime={day.toISOString()} className="pt-1">{day.getDate()}</time>
+                    <span className="text-xs text-muted-foreground flex items-center justify-center gap-1 pt-2">
                         <Users className="h-3 w-3" />
                         {daySummary.total}人
                     </span>
                 </div>
             </PopoverTrigger>
-            <PopoverContent className="w-48 p-2">
-                <div className="space-y-1">
+            <PopoverContent className="w-64 p-2" align="center">
+                <div className="space-y-2">
                     <h4 className="font-semibold text-sm">{format(day, 'M月d日')}の出勤内訳</h4>
-                     {sortedGenerations.map(([generation, count]) => (
-                        <div key={generation} className="flex justify-between items-center text-xs">
-                            <span className="text-muted-foreground">{generation}期生</span>
-                            <span className="font-medium">{count}人</span>
-                        </div>
-                    ))}
-                    <div className="flex justify-between items-center text-xs font-bold pt-1 border-t">
+                    <Accordion type="multiple" className="w-full">
+                      {sortedTeams.map(team => (
+                        <AccordionItem value={team.name} key={team.name}>
+                          <AccordionTrigger className="text-xs py-2">
+                              <div className="flex justify-between w-full pr-2">
+                                  <span className="font-semibold">{team.name}</span>
+                                  <span className="font-normal">{team.total}人</span>
+                              </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="pl-2 space-y-1">
+                                {Object.entries(team.byGeneration)
+                                    .sort(([a], [b]) => Number(b) - Number(a))
+                                    .map(([generation, count]) => (
+                                    <div key={generation} className="flex justify-between items-center text-xs">
+                                        <span className="text-muted-foreground">{generation}期生</span>
+                                        <span className="font-medium">{count}人</span>
+                                    </div>
+                                ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                    <div className="flex justify-between items-center text-sm font-bold pt-2 border-t">
                         <span>合計</span>
                         <span>{daySummary.total}人</span>
                     </div>
@@ -56,7 +77,6 @@ function DayCell({ day, summary }: { day: Date, summary: AttendanceSummary | nul
         </Popover>
     );
 }
-
 
 export default function AdminAttendanceCalendar() {
   const [date, setDate] = useState<Date>(new Date());
@@ -106,7 +126,7 @@ export default function AdminAttendanceCalendar() {
                     <ChevronRight />
                 </Button>
                  <Button variant="ghost" size="icon" onClick={refreshData} disabled={isLoading}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                    <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
             </div>
         </div>
@@ -117,7 +137,7 @@ export default function AdminAttendanceCalendar() {
         className="rounded-md border p-0"
         classNames={{
             months: "p-3",
-            day: "h-16 w-full p-1",
+            day: "h-16 w-full p-1 text-center",
             cell: "p-0",
         }}
         showOutsideDays

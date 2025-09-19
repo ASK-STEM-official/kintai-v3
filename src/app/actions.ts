@@ -236,73 +236,65 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
 
 export async function getMonthlyAttendanceSummary(month: Date) {
   const supabase = createSupabaseAdminClient();
-  const start = startOfMonth(month);
-  const end = endOfMonth(month);
+  const start = format(startOfMonth(month), 'yyyy-MM-dd');
+  const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
   const { data, error } = await supabase
     .from('attendances')
-    .select('date, users (generation)')
+    .select('date, user_id, users(generation, team_id, teams(name))')
     .eq('type', 'in')
-    .gte('date', format(start, 'yyyy-MM-dd'))
-    .lte('date', format(end, 'yyyy-MM-dd'));
+    .gte('date', start)
+    .lte('date', end);
 
   if (error) {
     console.error('Error fetching monthly attendance summary:', error);
     return {};
   }
-  
-  const summary: Record<string, { total: number; byGeneration: Record<number, number> }> = {};
 
-  for (const record of data) {
-    const { date, users } = record;
-    if (!date || !users) continue;
-    
-    if (!summary[date]) {
-      summary[date] = { total: 0, byGeneration: {} };
+  type DailySummary = {
+    total: number;
+    byTeam: Record<string, { name: string; total: number; byGeneration: Record<number, number> }>;
+  };
+
+  const summary: Record<string, DailySummary> = {};
+  const dailyUniqueUsers: Record<string, Set<string>> = {};
+
+  if (data) {
+    for (const record of data) {
+      const { date, user_id, users } = record;
+      if (!date || !user_id || !users || !users.teams) continue;
+
+      if (!dailyUniqueUsers[date]) {
+        dailyUniqueUsers[date] = new Set();
+      }
+
+      if (dailyUniqueUsers[date].has(user_id)) {
+        continue;
+      }
+      dailyUniqueUsers[date].add(user_id);
+
+      if (!summary[date]) {
+        summary[date] = { total: 0, byTeam: {} };
+      }
+
+      summary[date].total++;
+
+      const teamId = users.team_id!.toString();
+      if (!summary[date].byTeam[teamId]) {
+        summary[date].byTeam[teamId] = {
+          name: users.teams.name,
+          total: 0,
+          byGeneration: {},
+        };
+      }
+
+      summary[date].byTeam[teamId].total++;
+      
+      const generation = users.generation;
+      summary[date].byTeam[teamId].byGeneration[generation] = (summary[date].byTeam[teamId].byGeneration[generation] || 0) + 1;
     }
-    
-    // This logic assumes one 'in' record per user per day for counting.
-    // If a user can have multiple 'in' records a day, we need to count unique users.
-    // Let's refine this to count unique users per day.
   }
 
-  // To count unique users, we need to process the data differently
-  const dailyUsers: Record<string, Map<string, number>> = {};
-  const { data: uniqueData, error: uniqueError } = await supabase
-    .from('attendances')
-    .select('date, user_id, users(generation)')
-    .eq('type', 'in')
-    .gte('date', format(start, 'yyyy-MM-dd'))
-    .lte('date', format(end, 'yyyy-MM-dd'));
-
-  if (uniqueError) {
-    console.error('Error fetching monthly unique attendance summary:', uniqueError);
-    return {};
-  }
-
-  if (uniqueData) {
-    for (const record of uniqueData) {
-        const { date, user_id, users } = record;
-        if (!date || !user_id || !users) continue;
-
-        if (!dailyUsers[date]) {
-            dailyUsers[date] = new Map();
-        }
-        if (!dailyUsers[date].has(user_id)) {
-            dailyUsers[date].set(user_id, users.generation);
-        }
-    }
-  }
-
-
-  Object.keys(dailyUsers).forEach(date => {
-      const usersMap = dailyUsers[date];
-      summary[date] = { total: usersMap.size, byGeneration: {} };
-      usersMap.forEach((generation) => {
-          summary[date].byGeneration[generation] = (summary[date].byGeneration[generation] || 0) + 1;
-      });
-  });
-  
   return summary;
 }
 

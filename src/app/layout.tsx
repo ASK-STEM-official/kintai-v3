@@ -16,7 +16,7 @@ const fontMono = Source_Code_Pro({
 });
 
 export const metadata: Metadata = {
-  title: 'AttendanceZen',
+  title: 'STEM研究部 勤怠管理システム',
   description: 'A modern attendance management system.',
 };
 

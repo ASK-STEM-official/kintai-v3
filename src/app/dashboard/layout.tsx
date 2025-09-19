@@ -50,7 +50,7 @@ async function MainSidebar({ user, isAdmin, userTeamId }: { user: any, isAdmin: 
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
                 <Icons.Logo className="w-6 h-6 text-primary" />
-                <h2 className="font-semibold text-lg">AttendanceZen</h2>
+                <h2 className="font-semibold text-lg">STEM研究部</h2>
             </div>
             <ThemeToggle />
         </div>

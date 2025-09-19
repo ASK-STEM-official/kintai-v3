@@ -17,8 +17,7 @@ function LoginContent() {
         <div className="flex flex-col items-center justify-center p-8">
             <div className="w-full max-w-sm text-center">
                 <Icons.Logo className="w-16 h-16 mx-auto text-primary mb-4" />
-                <h1 className="text-3xl font-bold text-foreground">AttendanceZen</h1>
-                <p className="text-muted-foreground mt-2">STEM研究部 勤怠管理システム</p>
+                <h1 className="text-3xl font-bold text-foreground mt-4">STEM研究部勤怠管理システム</h1>
                 
                 {error && (
                     <Alert variant="destructive" className="mt-6 text-left">
@@ -36,10 +35,6 @@ function LoginContent() {
                         Discordでログイン
                     </Button>
                 </form>
-
-                <p className="text-xs text-muted-foreground mt-4">
-                    アクセスするには管理者から招待されたDiscordアカウントが必要です。
-                </p>
             </div>
         </div>
     )

@@ -1,4 +1,4 @@
-# AttendanceZen
+# STEM研究部勤怠管理システム
 
 This is a Next.js attendance management system for STEM research clubs, built with Supabase and Discord OAuth.
 
