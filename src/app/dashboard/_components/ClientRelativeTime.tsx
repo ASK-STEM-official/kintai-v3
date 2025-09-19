@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 interface ClientRelativeTimeProps {
@@ -13,7 +13,15 @@ export default function ClientRelativeTime({ date }: ClientRelativeTimeProps) {
 
   useEffect(() => {
     // This effect runs only on the client, after hydration
-    setRelativeTime(formatDistanceToNow(new Date(date), { addSuffix: true, locale: ja }));
+    const now = new Date();
+    const targetDate = new Date(date);
+    
+    // Check if the date is from today
+    if(now.toDateString() === targetDate.toDateString()) {
+      setRelativeTime(format(targetDate, 'HH:mm', { locale: ja }));
+    } else {
+      setRelativeTime(formatDistanceToNow(targetDate, { addSuffix: true, locale: ja }));
+    }
   }, [date]);
 
   // Render a placeholder on the server and initial client render

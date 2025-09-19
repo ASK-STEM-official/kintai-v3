@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
-import { differenceInSeconds } from 'date-fns';
+import { differenceInSeconds, startOfDay, endOfDay, subDays, format } from 'date-fns';
 
 type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
@@ -404,18 +404,135 @@ export async function getTeamWithMembersStatus(teamId: number) {
     const supabase = createSupabaseServerClient();
     const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', teamId).single();
 
-    if(teamError) return { team: null, members: [] };
+    if(teamError) return { team: null, members: [], stats: null };
 
+    // Get all members of the team with their latest attendance status
     const { data: members, error: membersError } = await supabase
         .from('users')
-        .select('id, display_name, generation, latest_attendance:attendances(type)')
+        .select('id, display_name, generation, discord_id, latest_attendance:attendances!inner(type, timestamp)')
         .eq('team_id', teamId)
         .order('timestamp', { foreignTable: 'attendances', ascending: false })
         .limit(1, { foreignTable: 'attendances' })
         .order('generation', { ascending: false })
         .order('display_name');
+
+    if(membersError) {
+        // Fallback for members who might not have any attendance records
+        const { data: allMembers, error: allMembersError } = await supabase
+            .from('users')
+            .select('id, display_name, generation, discord_id')
+            .eq('team_id', teamId)
+            .order('generation', { ascending: false })
+            .order('display_name');
+
+        if (allMembersError) return { team, members: [], stats: null };
+
+        const membersWithNullAttendance = allMembers.map(m => ({ ...m, latest_attendance: [] }));
+        return { team, members: membersWithNullAttendance, stats: await getTeamStats(teamId) };
+    }
         
-    return { team, members: members || [] };
+    // Combine members with attendance and members without any attendance
+    const attendedMemberIds = new Set(members?.map(m => m.id));
+    const { data: allMembers, error: allMembersError } = await supabase
+        .from('users')
+        .select('id, display_name, generation, discord_id')
+        .eq('team_id', teamId)
+        .order('generation', { ascending: false })
+        .order('display_name');
+
+    if (allMembersError) {
+        return { team, members: [], stats: null };
+    }
+    
+    const combinedMembers = allMembers.map(m => {
+        if(attendedMemberIds.has(m.id)) {
+            return members!.find(am => am.id === m.id)!;
+        }
+        return { ...m, latest_attendance: [] };
+    })
+    
+    return { team, members: combinedMembers || [], stats: await getTeamStats(teamId) };
+}
+
+async function getTeamStats(teamId: number) {
+    const supabase = createSupabaseAdminClient();
+    const today = new Date();
+
+    const { count: totalMembersCount, error: totalMembersError } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', teamId);
+
+    if (totalMembersError) return null;
+
+    const { data: todayAttendanceData, error: todayAttendanceError } = await supabase
+        .from('attendances')
+        .select('user_id', { count: 'exact' })
+        .eq('type', 'in')
+        .gte('timestamp', startOfDay(today).toISOString())
+        .lte('timestamp', endOfDay(today).toISOString())
+        .in('user_id', (await supabase.from('users').select('id').eq('team_id', teamId)).data?.map(u => u.id) || []);
+    
+    const uniqueTodayAttendees = todayAttendanceData ? new Set(todayAttendanceData.map(d => d.user_id)).size : 0;
+    
+    const attendanceRate = totalMembersCount ? (uniqueTodayAttendees / totalMembersCount) * 100 : 0;
+
+    const avgAttendance = await getMonthlyTeamAttendanceStats(teamId, 30);
+    
+    return {
+        totalMembers: totalMembersCount || 0,
+        todayAttendees: uniqueTodayAttendees,
+        todayAttendanceRate: attendanceRate,
+        averageAttendanceRate30d: avgAttendance,
+    };
+}
+
+
+export async function getMonthlyTeamAttendanceStats(teamId: number, days: number): Promise<number> {
+    const supabase = createSupabaseAdminClient();
+    const { data: teamMembers, error: teamMembersError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('team_id', teamId);
+
+    if (teamMembersError || !teamMembers || teamMembers.length === 0) return 0;
+    
+    const memberIds = teamMembers.map(m => m.id);
+
+    const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+    const endDate = format(new Date(), 'yyyy-MM-dd');
+
+    const { data: activityDays, error: activityDaysError } = await supabase
+        .from('attendances')
+        .select('date', { count: 'exact' })
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+    const totalActivityDays = new Set(activityDays?.map(d => d.date)).size;
+    if (totalActivityDays === 0) return 0;
+
+    const { data: teamAttendances, error: teamAttendancesError } = await supabase
+        .from('attendances')
+        .select('date, user_id')
+        .in('user_id', memberIds)
+        .eq('type', 'in')
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+    if (teamAttendancesError) return 0;
+
+    const dailyAttendanceCount = teamAttendances.reduce((acc, curr) => {
+        if (!acc[curr.date]) {
+            acc[curr.date] = new Set();
+        }
+        acc[curr.date].add(curr.user_id);
+        return acc;
+    }, {} as Record<string, Set<string>>);
+    
+    const dailyRates = Object.values(dailyAttendanceCount).map(users => (users.size / memberIds.length) * 100);
+    const averageRate = dailyRates.reduce((sum, rate) => sum + rate, 0) / totalActivityDays;
+
+    return averageRate;
 }
 
 

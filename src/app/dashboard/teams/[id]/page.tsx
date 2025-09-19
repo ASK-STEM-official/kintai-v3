@@ -1,15 +1,18 @@
 import { getTeamWithMembersStatus } from "@/app/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, LogIn, LogOut, Users2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock } from "lucide-react";
+import Link from "next/link";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import ClientRelativeTime from "../../_components/ClientRelativeTime";
 
 export const dynamic = 'force-dynamic';
 
 export default async function TeamStatusPage({ params }: { params: { id: string } }) {
     const teamId = Number(params.id);
-    const { team, members } = await getTeamWithMembersStatus(teamId);
+    const { team, members, stats } = await getTeamWithMembersStatus(teamId);
 
     if (!team) {
         return (
@@ -22,81 +25,95 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
             </Alert>
         )
     }
-
-    const membersIn = members.filter(m => m.latest_attendance[0]?.type === 'in');
-    const membersOut = members.filter(m => m.latest_attendance[0]?.type !== 'in');
     
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold flex items-center gap-2">
-                    <Users2 />
-                    {team.name}
-                </h1>
-                <p className="text-muted-foreground">班のメンバーのリアルタイム出退勤状況</p>
+            <div className="flex items-center gap-4">
+                <Button variant="outline" size="icon" asChild>
+                    <Link href="/dashboard">
+                        <ArrowLeft />
+                    </Link>
+                </Button>
+                <div>
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        {team.name} 班統計
+                    </h1>
+                    <p className="text-muted-foreground">班全体の出勤状況と統計情報</p>
+                </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">班員数</CardTitle>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{stats?.totalMembers || 0}人</div>
+                        <p className="text-xs text-muted-foreground">登録済み班員</p>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">今日の出勤</CardTitle>
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{stats?.todayAttendees || 0}人</div>
+                        <p className="text-xs text-muted-foreground">出勤率: {stats?.todayAttendanceRate.toFixed(0) || 0}%</p>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">平均出勤率 (対活動日)</CardTitle>
+                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{stats?.averageAttendanceRate30d.toFixed(0) || 0}%</div>
+                        <p className="text-xs text-muted-foreground">過去30日間</p>
+                    </CardContent>
+                </Card>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-green-500">
-                            <LogIn /> 在室メンバー ({membersIn.length}人)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {membersIn.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>名前</TableHead>
-                                        <TableHead>期生</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {membersIn.map(member => (
-                                        <TableRow key={member.id}>
-                                            <TableCell>{member.display_name}</TableCell>
-                                            <TableCell>{member.generation}期生</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        ) : (
-                            <p className="text-muted-foreground">現在、在室中のメンバーはいません。</p>
-                        )}
-                    </CardContent>
-                </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>班員一覧</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {members.map(member => {
+                        const status = member.latest_attendance[0]?.type;
+                        const timestamp = member.latest_attendance[0]?.timestamp;
+                        const initials = member.display_name.substring(0, 2).toUpperCase();
 
-                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-gray-500">
-                            <LogOut /> 退室メンバー ({membersOut.length}人)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                         {membersOut.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>名前</TableHead>
-                                        <TableHead>期生</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {membersOut.map(member => (
-                                        <TableRow key={member.id}>
-                                            <TableCell>{member.display_name}</TableCell>
-                                            <TableCell>{member.generation}期生</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        ) : (
-                            <p className="text-muted-foreground">現在、退室中のメンバーはいません。</p>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                        return (
+                            <div key={member.id} className="flex items-center justify-between p-3 rounded-md border hover:bg-muted/50 transition-colors">
+                                <div className="flex items-center gap-4">
+                                     <Avatar>
+                                        <AvatarFallback>{initials}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <p className="font-semibold">{member.display_name}</p>
+                                        <p className="text-sm text-muted-foreground">@{member.discord_id}</p>
+                                    </div>
+                                </div>
+                                {status === 'in' ? (
+                                    <Badge>
+                                        出勤中
+                                        {timestamp && (
+                                            <span className="ml-2 flex items-center gap-1">
+                                                <Clock className="h-3 w-3"/>
+                                                <ClientRelativeTime date={timestamp} />
+                                            </span>
+                                        )}
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="secondary">退勤</Badge>
+                                )}
+                            </div>
+                        )
+                    })}
+                </CardContent>
+            </Card>
         </div>
     )
 }

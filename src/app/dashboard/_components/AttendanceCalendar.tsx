@@ -1,12 +1,13 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { getMonthlyAttendance } from '@/app/actions';
-import { startOfMonth, endOfMonth, eachDayOfInterval, format, set } from 'date-fns';
-import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface AttendanceRecord {
   date: string;
@@ -44,14 +45,14 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
 
   return (
     <div>
-        <div className="flex justify-center items-center mb-4 relative">
-            <Button variant="ghost" size="icon" onClick={goToPreviousMonth} className="absolute left-0">
+        <div className="flex justify-between items-center mb-2 px-1">
+            <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
                 <ChevronLeft />
             </Button>
-            <h3 className="text-lg font-semibold">
-                {format(date, 'yyyy年 M月')}
+            <h3 className="text-sm font-semibold text-center">
+                {format(date, 'yyyy年 M月', { locale: ja })}
             </h3>
-             <Button variant="ghost" size="icon" onClick={goToNextMonth} className="absolute right-0">
+             <Button variant="ghost" size="icon" onClick={goToNextMonth}>
                 <ChevronRight />
             </Button>
         </div>
@@ -67,9 +68,9 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
             months: "p-3",
         }}
         showOutsideDays
-        captionLayout="dropdown-buttons"
-        fromYear={2023}
-        toYear={new Date().getFullYear()}
+        components={{
+          Caption: () => null,
+        }}
       />
        <div className="mt-4 space-y-2 text-sm">
             <p className="flex items-center gap-2"><Badge className="w-16 justify-center">出勤</Badge> 記録がある日</p>
