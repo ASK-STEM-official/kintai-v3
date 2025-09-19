@@ -15,9 +15,10 @@ export async function middleware(request: NextRequest) {
     }
 
     if (token !== kioskToken) {
+      // トークンが不正な場合は、ページの存在を悟られないようにダッシュボードへリダイレクト
       const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      url.search = `error=${encodeURIComponent("無効なKioskトークンです。")}`;
+      url.pathname = "/dashboard";
+      url.search = ''; // クエリパラメータをクリア
       return NextResponse.redirect(url);
     }
     

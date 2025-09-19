@@ -620,7 +620,6 @@ export async function forceToggleAttendance(userId: string) {
 export async function getTeamWithMembersStatus(teamId: number) {
     const supabase = createSupabaseServerClient();
     
-    // 1. Check permissions
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
     
@@ -631,53 +630,31 @@ export async function getTeamWithMembersStatus(teamId: number) {
         return { team: null, members: [], stats: null, error: 'Access denied' };
     }
 
-    // 2. Fetch team details
     const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', teamId).single();
+    if(teamError || !team) return { team: null, members: [], stats: null, error: teamError?.message || 'Team not found' };
 
-    if(teamError || !team) return { team: null, members: [], stats: null };
-
-    // 3. Fetch all members of the team
-    const { data: membersData, error: membersError } = await supabase
-        .from('users')
-        .select('id, display_name, generation, discord_id')
-        .eq('team_id', teamId)
-        .order('generation', { ascending: false })
-        .order('display_name');
+    const { data: members, error: membersError } = await supabase.from('users').select(`
+        id,
+        display_name,
+        generation,
+        discord_id,
+        latest_attendance:attendances(type, timestamp)
+    `)
+    .eq('team_id', teamId)
+    .order('timestamp', { foreignTable: 'attendances', ascending: false })
+    .limit(1, { foreignTable: 'attendances' });
 
     if (membersError) {
-        console.error("Error fetching team members:", membersError);
-        return { team, members: [], stats: null };
+        console.error("Error fetching team members with status:", membersError);
+        return { team, members: [], stats: null, error: membersError.message };
     }
 
-    const memberIds = membersData.map(m => m.id);
-
-    // 4. Fetch the latest attendance for each member
-    const { data: latestAttendances, error: attendanceError } = await supabase
-        .rpc('get_latest_attendance_for_users', { user_ids: memberIds });
-
-    if (attendanceError) {
-        console.error("Error fetching latest attendance:", attendanceError);
-        // Continue without status if this fails, but log the error
-    }
-
-    const statusMap = new Map<string, { type: 'in' | 'out', timestamp: string }>();
-    if (latestAttendances) {
-        for (const att of latestAttendances) {
-            statusMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
-        }
-    }
+    const membersWithStatus = members.map(member => ({
+        ...member,
+        status: (member.latest_attendance[0]?.type as 'in' | 'out') || 'out',
+        timestamp: member.latest_attendance[0]?.timestamp || null,
+    }));
     
-    // 5. Combine member data with status
-    const membersWithStatus = membersData.map(member => {
-        const attendance = statusMap.get(member.id);
-        return {
-            ...member,
-            status: attendance?.type || 'out',
-            timestamp: attendance?.timestamp || null,
-        };
-    });
-
-    // 6. Get team stats
     const stats = await getTeamStats(teamId);
 
     return { team, members: membersWithStatus, stats: stats };
@@ -832,3 +809,5 @@ export async function deleteTempRegistration(id: string) {
     revalidatePath('/admin');
     return { success: true, message: '仮登録を削除しました。' };
 }
+
+    

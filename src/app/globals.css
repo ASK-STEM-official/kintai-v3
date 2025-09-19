@@ -71,7 +71,7 @@
 
 @layer utilities {
   .attendance-count {
-    @apply text-xs text-muted-foreground flex items-center justify-center gap-1;
+    @apply text-xs text-muted-foreground flex items-center justify-center;
   }
   
   .rdp-day_outside .attendance-count {

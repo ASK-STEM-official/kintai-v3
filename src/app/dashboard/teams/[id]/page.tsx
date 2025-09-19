@@ -28,13 +28,14 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
         )
     }
 
-    if (!team) {
+    if (error || !team) {
         return (
              <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>エラー</AlertTitle>
                 <AlertDescription>
                     指定された班が見つかりません。
+                     <Button variant="link" asChild><Link href="/dashboard">ダッシュボードに戻る</Link></Button>
                 </AlertDescription>
             </Alert>
         )
@@ -95,8 +96,6 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {members.map(member => {
-                        const status = member.status;
-                        const timestamp = member.timestamp;
                         const initials = member.display_name.substring(0, 2).toUpperCase();
 
                         return (
@@ -110,13 +109,13 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                                         <p className="text-sm text-muted-foreground">{convertGenerationToGrade(member.generation)}</p>
                                     </div>
                                 </div>
-                                {status === 'in' ? (
+                                {member.status === 'in' ? (
                                     <Badge>
                                         出勤中
-                                        {timestamp && (
+                                        {member.timestamp && (
                                             <span className="ml-2 flex items-center gap-1">
                                                 <Clock className="h-3 w-3"/>
-                                                <ClientRelativeTime date={timestamp} />
+                                                <ClientRelativeTime date={member.timestamp} />
                                             </span>
                                         )}
                                     </Badge>
@@ -131,3 +130,5 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
         </div>
     )
 }
+
+    
