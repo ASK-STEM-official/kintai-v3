@@ -14,7 +14,6 @@ import { useToast } from '@/hooks/use-toast';
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
 type AttendanceType = 'in' | 'out' | null;
 type Announcement = Database['public']['Tables']['announcements']['Row'] | null;
-type Team = Database['public']['Tables']['teams']['Row'];
 
 const AUTO_RESET_DELAY = 5000;
 
@@ -218,8 +217,8 @@ export default function KioskPage() {
   }
   
   const IdleScreen = () => (
-    <div className="flex flex-col items-center h-full w-full">
-        <header className="w-full flex justify-between items-center px-8 py-8 text-xl">
+    <div className="flex flex-col h-full w-full justify-between p-8">
+        <header className="w-full flex justify-between items-center text-xl">
             <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
             {isOnline !== undefined && (
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
@@ -229,7 +228,7 @@ export default function KioskPage() {
             )}
         </header>
 
-        <div className="flex-grow w-full flex flex-col items-center justify-center">
+        <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4">
             {announcement && announcement.is_active && (
                 <div className="w-full max-w-4xl p-6 bg-blue-500/10 border border-blue-400/30 rounded-lg text-center mb-8">
                 <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-3">
@@ -242,7 +241,7 @@ export default function KioskPage() {
             <Clock />
         </div>
         
-        <footer className="w-full text-center py-8 px-4">
+        <footer className="w-full text-center">
             <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
             <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
             <div className="text-gray-500 mt-8">
@@ -349,9 +348,9 @@ export default function KioskPage() {
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-body">
+    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans">
       <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl relative flex flex-col items-center justify-center overflow-hidden">
-        <div className="w-full h-full flex flex-col items-center justify-center p-4">
+        <div className="w-full h-full flex flex-col items-center justify-center">
           {renderState()}
         </div>
         
@@ -367,3 +366,4 @@ export default function KioskPage() {
     </div>
   );
 }
+

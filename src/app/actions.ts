@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
+import { differenceInSeconds } from 'date-fns';
 
 type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
@@ -233,6 +234,38 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
     date,
     status: dailyStatus[date]
   }));
+}
+
+export async function calculateTotalActivityTime(userId: string): Promise<number> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: attendances, error } = await supabase
+    .from('attendances')
+    .select('type, timestamp')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: true });
+
+  if (error || !attendances) {
+    console.error('Error fetching attendances for time calculation:', error);
+    return 0;
+  }
+
+  let totalSeconds = 0;
+  let inTime: Date | null = null;
+
+  for (const attendance of attendances) {
+    if (attendance.type === 'in') {
+      // If there are consecutive 'in' records, use the latest one.
+      inTime = new Date(attendance.timestamp);
+    } else if (attendance.type === 'out' && inTime) {
+      // If there is an 'out' record and a preceding 'in' record, calculate the duration.
+      const outTime = new Date(attendance.timestamp);
+      totalSeconds += differenceInSeconds(outTime, inTime);
+      inTime = null; // Reset inTime after calculating the duration.
+    }
+  }
+
+  return totalSeconds / 3600; // Convert seconds to hours
 }
 
 // Admin actions

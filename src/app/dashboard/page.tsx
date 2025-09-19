@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./_components/AttendanceCalendar";
 import ClientRelativeTime from "./_components/ClientRelativeTime";
+import { calculateTotalActivityTime } from "../actions";
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,13 @@ export default async function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     const { data: profile } = await supabase.from('users').select('*, teams(name)').eq('id', user!.id).single();
-    const { data: attendances, error } = await supabase.from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5);
+    
+    const [attendancesResult, totalActivityTime] = await Promise.all([
+      supabase.from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5),
+      calculateTotalActivityTime(user!.id)
+    ]);
+    
+    const { data: attendances } = attendancesResult;
 
     // 1. Correctly count distinct attendance days for the user
     const { count: totalIn, error: totalInError } = await supabase
@@ -80,9 +87,9 @@ export default async function DashboardPage() {
                     <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">-- 時間</div>
+                    <div className="text-2xl font-bold">{totalActivityTime.toFixed(1)} 時間</div>
                     <p className="text-xs text-muted-foreground">
-                        現在この機能は開発中です
+                        完了したセッションの合計
                     </p>
                 </CardContent>
             </Card>
