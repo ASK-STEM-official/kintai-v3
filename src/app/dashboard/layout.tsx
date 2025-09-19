@@ -20,7 +20,8 @@ async function UserProfile({ user }: { user: any }) {
   const initials = profile?.display_name?.charAt(0).toUpperCase() || 'U';
   
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
         <Avatar>
             <AvatarImage src={user.user_metadata.avatar_url} alt={profile?.display_name} />
             <AvatarFallback>{initials}</AvatarFallback>
@@ -29,6 +30,12 @@ async function UserProfile({ user }: { user: any }) {
             <span className="font-semibold text-sm">{profile?.display_name || '名無しさん'}</span>
             <span className="text-xs text-muted-foreground">{user.email}</span>
         </div>
+      </div>
+       <form action={signOut}>
+          <Button variant="ghost" size="icon" type="submit" title="ログアウト">
+            <Icons.LogOut />
+          </Button>
+       </form>
     </div>
   )
 }
@@ -56,7 +63,7 @@ async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
 
 function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
     return (
-        <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
                 <SheetTrigger asChild>
                     <Button size="icon" variant="outline" className="sm:hidden">
@@ -69,9 +76,7 @@ function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
-              <form action={signOut}>
-                <Button variant="outline" size="icon" type="submit"><Icons.LogOut /></Button>
-              </form>
+              {/* Mobile header can have other items like a title if needed */}
             </div>
         </header>
     )
@@ -104,7 +109,7 @@ export default async function DashboardLayout({
       </Sidebar>
       <div className="flex flex-col sm:pl-64">
         <MobileHeader user={user} isAdmin={isAdmin} />
-        <main className="flex-1 p-4 sm:p-6 bg-secondary/50 min-h-screen">
+        <main className="flex-1 p-4 sm:p-6 bg-secondary/50">
           {children}
         </main>
       </div>
