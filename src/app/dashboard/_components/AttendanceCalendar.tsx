@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Calendar } from '@/components/ui/calendar';
 import { getMonthlyAttendance } from '@/app/actions';
 import { format } from 'date-fns';
@@ -8,6 +8,7 @@ import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Check } from 'lucide-react';
 
 interface AttendanceRecord {
   date: string;
@@ -41,7 +42,25 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
     setDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   }
 
-  const attendedDays = attendance.map(a => new Date(a.date));
+  const attendedDays = useMemo(() => attendance.map(a => {
+    const d = new Date(a.date);
+    d.setHours(0,0,0,0);
+    // Adjust for timezone offset to prevent off-by-one day errors
+    const timezoneOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() + timezoneOffset);
+  }), [attendance]);
+
+  const formatDay = (day: Date) => {
+    const isAttended = attendedDays.some(ad => ad.getTime() === day.getTime());
+    return (
+        <>
+            <div>{day.getDate()}</div>
+            <div className="attendance-count">
+                {isAttended ? <Check className="h-4 w-4 text-primary" /> : <>&nbsp;</>}
+            </div>
+        </>
+    );
+  };
 
   return (
     <div>
@@ -50,28 +69,31 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
                 {format(date, 'yyyy年 M月', { locale: ja })}
             </h3>
             <div className='flex items-center gap-1'>
-              <Button variant="ghost" size="icon" onClick={goToPreviousMonth}>
+              <Button variant="ghost" size="icon" onClick={goToPreviousMonth} disabled={isLoading}>
                   <ChevronLeft />
               </Button>
-              <Button variant="ghost" size="icon" onClick={goToNextMonth}>
+              <Button variant="ghost" size="icon" onClick={goToNextMonth} disabled={isLoading}>
                   <ChevronRight />
               </Button>
             </div>
         </div>
       <Calendar
-        mode="multiple"
         month={date}
         onMonthChange={handleMonthChange}
-        selected={attendedDays}
         disabled={isLoading}
-        className="rounded-md border p-0"
-        classNames={{
-            day_selected: "bg-primary/90 text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-            months: "p-3",
-        }}
+        className="rounded-md border"
         showOutsideDays
         components={{
           Caption: () => null,
+        }}
+        modifiers={{
+          attended: attendedDays
+        }}
+        modifiersClassNames={{
+          attended: 'font-bold'
+        }}
+        formatters={{
+          formatDay
         }}
       />
        <div className="mt-4 space-y-2 text-sm">

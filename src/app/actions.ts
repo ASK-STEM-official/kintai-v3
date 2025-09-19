@@ -12,11 +12,13 @@ type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
 export async function recordAttendance(cardId: string): Promise<{ success: boolean; message: string; user: UserWithTeam | null; type: 'in' | 'out' | null; anomalyReason?: string }> {
   const supabase = createSupabaseAdminClient();
+  
+  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
 
   const { data: user, error: userError } = await supabase
     .from('users')
     .select('*, teams (id, name)')
-    .eq('card_id', cardId)
+    .eq('card_id', normalizedCardId)
     .single();
 
   if (userError || !user) {
@@ -59,11 +61,12 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
   const supabase = createSupabaseAdminClient();
+  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
   
   const { data: existingUser, error: existingUserError } = await supabase
     .from('users')
     .select('id')
-    .eq('card_id', cardId);
+    .eq('card_id', normalizedCardId);
 
   if (existingUserError) {
     console.error("Error checking for existing user:", existingUserError);
@@ -78,7 +81,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
   const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   
   const { error } = await supabase.from('temp_registrations').upsert(
-    { card_id: cardId, qr_token: token, expires_at: expires_at, is_used: false },
+    { card_id: normalizedCardId, qr_token: token, expires_at: expires_at, is_used: false },
     { onConflict: 'card_id', ignoreDuplicates: false }
   );
   
@@ -193,6 +196,84 @@ export async function signInWithDiscord() {
     if (data.url) {
         redirect(data.url);
     }
+}
+
+export async function signInAsAnonymousAdmin() {
+    const adminSupabase = createSupabaseAdminClient();
+    const supabase = createSupabaseServerClient();
+    const email = 'admin@example.com';
+    const password = 'password';
+
+    // 1. Check if the user already exists in auth.users
+    const { data: { users }, error: listUsersError } = await adminSupabase.auth.admin.listUsers();
+    if (listUsersError) {
+        console.error('Error listing users:', listUsersError);
+        return redirect('/login?error=Failed to list users.');
+    }
+
+    let authUser = users.find(u => u.email === email);
+
+    if (!authUser) {
+        // 2. If not, create the auth user
+        const { data: newAuthUserData, error: createAuthUserError } = await adminSupabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+        });
+
+        if (createAuthUserError || !newAuthUserData.user) {
+            console.error('Error creating anonymous admin auth user:', createAuthUserError);
+            return redirect(`/login?error=${createAuthUserError?.message || 'Failed to create user'}`);
+        }
+        authUser = newAuthUserData.user;
+    }
+    
+    if (!authUser) {
+         return redirect('/login?error=Could not create or find anonymous admin user.');
+    }
+
+    // 3. Check if the user exists in public.users
+    const { data: profile, error: profileError } = await adminSupabase
+        .from('users')
+        .select('id')
+        .eq('id', authUser.id)
+        .single();
+    
+    if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error checking for profile:', profileError);
+        return redirect('/login?error=Failed to check for user profile.');
+    }
+
+    if (!profile) {
+        // 4. If not, create the public.users profile
+        const { error: createProfileError } = await adminSupabase.from('users').insert({
+            id: authUser.id,
+            display_name: '匿名管理者',
+            discord_id: 'anonymous_admin',
+            card_id: `admin_${randomUUID().slice(0,8)}`,
+            generation: 0,
+            role: 1, // Admin role
+        });
+
+        if (createProfileError) {
+            console.error('Error creating anonymous admin profile:', createProfileError);
+            return redirect(`/login?error=${createProfileError.message}`);
+        }
+    }
+
+    // 5. Sign in the user
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+    });
+
+    if (signInError) {
+        console.error('Sign in error:', signInError);
+        return redirect(`/login?error=${signInError.message}`);
+    }
+
+    revalidatePath('/', 'layout');
+    redirect('/dashboard');
 }
 
 
@@ -411,6 +492,11 @@ export async function getTeamsWithMemberStatus() {
 
 export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
     const supabase = createSupabaseAdminClient();
+    
+    if (data.card_id) {
+        data.card_id = data.card_id.replace(/:/g, '').toLowerCase();
+    }
+
     const { error } = await supabase.from('users').update(data).eq('id', userId);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -533,7 +619,8 @@ export async function forceToggleAttendance(userId: string) {
 
 export async function getTeamWithMembersStatus(teamId: number) {
     const supabase = createSupabaseServerClient();
-
+    
+    // 1. Check permissions
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
     
@@ -544,57 +631,58 @@ export async function getTeamWithMembersStatus(teamId: number) {
         return { team: null, members: [], stats: null, error: 'Access denied' };
     }
 
+    // 2. Fetch team details
     const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', teamId).single();
 
-    if(teamError) return { team: null, members: [], stats: null };
+    if(teamError || !team) return { team: null, members: [], stats: null };
 
-    // Get all members of the team with their latest attendance status
-    const { data: members, error: membersError } = await supabase
-        .from('users')
-        .select('id, display_name, generation, discord_id, latest_attendance:attendances!inner(type, timestamp)')
-        .eq('team_id', teamId)
-        .order('timestamp', { foreignTable: 'attendances', ascending: false })
-        .limit(1, { foreignTable: 'attendances' })
-        .order('generation', { ascending: false })
-        .order('display_name');
-
-    if(membersError) {
-        // Fallback for members who might not have any attendance records
-        const { data: allMembers, error: allMembersError } = await supabase
-            .from('users')
-            .select('id, display_name, generation, discord_id')
-            .eq('team_id', teamId)
-            .order('generation', { ascending: false })
-            .order('display_name');
-
-        if (allMembersError) return { team, members: [], stats: null };
-
-        const membersWithNullAttendance = allMembers.map(m => ({ ...m, latest_attendance: [] }));
-        return { team, members: membersWithNullAttendance, stats: await getTeamStats(teamId) };
-    }
-        
-    // Combine members with attendance and members without any attendance
-    const attendedMemberIds = new Set(members?.map(m => m.id));
-    const { data: allMembers, error: allMembersError } = await supabase
+    // 3. Fetch all members of the team
+    const { data: membersData, error: membersError } = await supabase
         .from('users')
         .select('id, display_name, generation, discord_id')
         .eq('team_id', teamId)
         .order('generation', { ascending: false })
         .order('display_name');
 
-    if (allMembersError) {
+    if (membersError) {
+        console.error("Error fetching team members:", membersError);
         return { team, members: [], stats: null };
     }
-    
-    const combinedMembers = allMembers.map(m => {
-        if(attendedMemberIds.has(m.id)) {
-            return members!.find(am => am.id === m.id)!;
+
+    const memberIds = membersData.map(m => m.id);
+
+    // 4. Fetch the latest attendance for each member
+    const { data: latestAttendances, error: attendanceError } = await supabase
+        .rpc('get_latest_attendance_for_users', { user_ids: memberIds });
+
+    if (attendanceError) {
+        console.error("Error fetching latest attendance:", attendanceError);
+        // Continue without status if this fails, but log the error
+    }
+
+    const statusMap = new Map<string, { type: 'in' | 'out', timestamp: string }>();
+    if (latestAttendances) {
+        for (const att of latestAttendances) {
+            statusMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
         }
-        return { ...m, latest_attendance: [] };
-    })
+    }
     
-    return { team, members: combinedMembers || [], stats: await getTeamStats(teamId) };
+    // 5. Combine member data with status
+    const membersWithStatus = membersData.map(member => {
+        const attendance = statusMap.get(member.id);
+        return {
+            ...member,
+            status: attendance?.type || 'out',
+            timestamp: attendance?.timestamp || null,
+        };
+    });
+
+    // 6. Get team stats
+    const stats = await getTeamStats(teamId);
+
+    return { team, members: membersWithStatus, stats: stats };
 }
+
 
 async function getTeamStats(teamId: number) {
     const supabase = createSupabaseAdminClient();

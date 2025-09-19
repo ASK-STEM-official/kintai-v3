@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Bot, UserCog } from "lucide-react";
 import ClientRelativeTime from "@/app/dashboard/_components/ClientRelativeTime";
+import { convertGenerationToGrade } from "@/lib/utils";
 
 type UserEditLog = {
   id: string;
@@ -63,6 +64,12 @@ const formatValue = (field: string, value: string | null) => {
     if (value === null) return 'N/A';
     if (field === 'role') return getRoleName(value);
     if (field === 'is_active') return getIsActiveName(value);
+    if (field === 'generation') {
+        const generationNumber = parseInt(value, 10);
+        if (!isNaN(generationNumber)) {
+            return convertGenerationToGrade(generationNumber);
+        }
+    }
     return value;
 }
 

@@ -15,6 +15,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 import { useFormStatus } from 'react-dom';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { convertGenerationToGrade } from '@/lib/utils';
 
 
 function SubmitButton() {
@@ -125,8 +126,8 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                                     <span>{fullProfile?.display_name}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
-                                    <span className='font-semibold'>🏷️ 班・期生</span>
-                                    <span>{fullProfile?.teams?.name}・{fullProfile?.generation}期生</span>
+                                    <span className='font-semibold'>🏷️ 班・学年/期生</span>
+                                    <span>{fullProfile?.teams?.name}・{fullProfile?.generation ? convertGenerationToGrade(fullProfile.generation) : ''}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className='font-semibold'>📇 カードID</span>

@@ -31,6 +31,7 @@ import { updateUser, logUserEdit, forceToggleAttendance } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { convertGenerationToGrade } from '@/lib/utils';
 
 type UserWithTeamAndStatus = Tables<'users'> & {
     teams: { id: number, name: string } | null;
@@ -211,7 +212,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                     <TableRow>
                         <SortableHeader sortKey="display_name" currentSort={sort} onSort={handleSort}>表示名</SortableHeader>
                         <SortableHeader sortKey="teams.name" currentSort={sort} onSort={handleSort}>班</SortableHeader>
-                         <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>期生</SortableHeader>
+                         <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>学年/期生</SortableHeader>
                         <SortableHeader sortKey="role" currentSort={sort} onSort={handleSort}>役割</SortableHeader>
                         <SortableHeader sortKey="status" currentSort={sort} onSort={handleSort}>現在の状態</SortableHeader>
                         <SortableHeader sortKey="card_id" currentSort={sort} onSort={handleSort}>カードID</SortableHeader>
@@ -224,7 +225,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         <TableRow key={user.id} data-state={!user.is_active ? "disabled" : ""}>
                             <TableCell className="font-medium">{user.display_name}</TableCell>
                             <TableCell>{user.teams?.name || '未所属'}</TableCell>
-                            <TableCell>{user.generation}期生</TableCell>
+                            <TableCell>{convertGenerationToGrade(user.generation)}</TableCell>
                             <TableCell>
                                 <Badge variant={user.role === 1 ? "destructive" : "outline"}>{user.role === 1 ? '管理者' : '部員'}</Badge>
                             </TableCell>

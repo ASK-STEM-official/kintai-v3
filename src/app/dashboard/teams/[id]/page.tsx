@@ -7,6 +7,7 @@ import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock, Lock } from 
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import ClientRelativeTime from "../../_components/ClientRelativeTime";
+import { convertGenerationToGrade } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -94,8 +95,8 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {members.map(member => {
-                        const status = member.latest_attendance[0]?.type;
-                        const timestamp = member.latest_attendance[0]?.timestamp;
+                        const status = member.status;
+                        const timestamp = member.timestamp;
                         const initials = member.display_name.substring(0, 2).toUpperCase();
 
                         return (
@@ -106,7 +107,7 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                                     </Avatar>
                                     <div>
                                         <p className="font-semibold">{member.display_name}</p>
-                                        <p className="text-sm text-muted-foreground">@{member.discord_id}</p>
+                                        <p className="text-sm text-muted-foreground">{convertGenerationToGrade(member.generation)}</p>
                                     </div>
                                 </div>
                                 {status === 'in' ? (

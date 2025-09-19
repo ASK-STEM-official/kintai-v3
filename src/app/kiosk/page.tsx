@@ -357,7 +357,7 @@ export default function KioskPage() {
         {(kioskState === 'input' || (kioskState === 'register' && inputValue)) && (
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/50 backdrop-blur-sm">
             <div className="w-full max-w-4xl mx-auto text-center">
-              <p className="text-lg text-gray-400 mb-2">入力中...</p>
+              <p className="text-lg text-gray-400 mb-2">読み取り中...</p>
               <p className="text-2xl font-mono bg-gray-800 px-4 py-2 rounded-lg inline-block">{inputValue}</p>
             </div>
           </div>
@@ -366,3 +366,5 @@ export default function KioskPage() {
     </div>
   );
 }
+
+    

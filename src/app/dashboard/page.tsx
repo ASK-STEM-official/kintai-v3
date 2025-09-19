@@ -16,6 +16,7 @@ import AttendanceCalendar from "./_components/AttendanceCalendar";
 import ClientRelativeTime from "./_components/ClientRelativeTime";
 import { calculateTotalActivityTime } from "../actions";
 import AdminAttendanceCalendar from "./_components/AdminAttendanceCalendar";
+import { convertGenerationToGrade } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,7 @@ export default async function DashboardPage() {
             </div>
             <div className="text-right">
                 <Badge variant="secondary">{profile?.teams?.name}</Badge>
-                <p className="text-sm text-muted-foreground">{profile?.generation}期生</p>
+                <p className="text-sm text-muted-foreground">{profile?.generation ? convertGenerationToGrade(profile.generation) : ''}</p>
             </div>
         </div>
       
@@ -112,7 +113,7 @@ export default async function DashboardPage() {
             </Card>
       </div>
       <div className="grid gap-6">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6">
             <Card>
                 <CardHeader>
                     <CardTitle>最近の出退勤記録</CardTitle>
