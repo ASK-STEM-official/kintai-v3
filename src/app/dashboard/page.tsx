@@ -111,48 +111,50 @@ export default async function DashboardPage() {
                 </CardContent>
             </Card>
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-            <CardTitle>最近の出退勤記録</CardTitle>
-        </CardHeader>
-        <CardContent>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                    <TableHead>種別</TableHead>
-                    <TableHead>日時</TableHead>
-                    <TableHead>相対時間</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {attendances && attendances.length > 0 ? attendances.map((att) => (
-                        <TableRow key={att.id}>
-                            <TableCell>
-                                <Badge variant={att.type === 'in' ? 'default' : 'secondary'}>
-                                    {att.type === 'in' ? '出勤' : '退勤'}
-                                </Badge>
-                            </TableCell>
-                            <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
-                            <TableCell><ClientRelativeTime date={att.timestamp} /></TableCell>
-                        </TableRow>
-                    )) : (
-                        <TableRow>
-                            <TableCell colSpan={3} className="text-center">記録がありません。</TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>出勤カレンダー</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isAdmin ? <AdminAttendanceCalendar /> : <AttendanceCalendar userId={user!.id} />}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <CardTitle>最近の出退勤記録</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                            <TableHead>種別</TableHead>
+                            <TableHead>日時</TableHead>
+                            <TableHead>相対時間</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {attendances && attendances.length > 0 ? attendances.map((att) => (
+                                <TableRow key={att.id}>
+                                    <TableCell>
+                                        <Badge variant={att.type === 'in' ? 'default' : 'secondary'}>
+                                            {att.type === 'in' ? '出勤' : '退勤'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
+                                    <TableCell><ClientRelativeTime date={att.timestamp} /></TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="text-center">記録がありません。</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+             <Card>
+                <CardHeader>
+                <CardTitle>出勤カレンダー</CardTitle>
+                </CardHeader>
+                <CardContent>
+                {isAdmin ? <AdminAttendanceCalendar /> : <AttendanceCalendar userId={user!.id} />}
+                </CardContent>
+            </Card>
+        </div>
       </div>
     </div>
   );
