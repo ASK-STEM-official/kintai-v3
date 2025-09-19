@@ -382,7 +382,7 @@ export async function forceToggleAttendance(userId: string) {
         .eq('user_id', userId)
         .order('timestamp', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
     
     if(lastAttendanceError && lastAttendanceError.code !== 'PGRST116') { // Not an error if no rows found
         return { success: false, message: lastAttendanceError.message };
@@ -402,6 +402,17 @@ export async function forceToggleAttendance(userId: string) {
 
 export async function getTeamWithMembersStatus(teamId: number) {
     const supabase = createSupabaseServerClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
+    
+    const { data: profile } = await supabase.from('users').select('role, team_id').eq('id', user.id).single();
+    const isAdmin = profile?.role === 1;
+
+    if (!isAdmin && profile?.team_id !== teamId) {
+        return { team: null, members: [], stats: null, error: 'Access denied' };
+    }
+
     const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', teamId).single();
 
     if(teamError) return { team: null, members: [], stats: null };

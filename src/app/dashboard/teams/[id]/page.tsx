@@ -3,7 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock } from "lucide-react";
+import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock, Lock } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import ClientRelativeTime from "../../_components/ClientRelativeTime";
@@ -12,7 +12,20 @@ export const dynamic = 'force-dynamic';
 
 export default async function TeamStatusPage({ params }: { params: { id: string } }) {
     const teamId = Number(params.id);
-    const { team, members, stats } = await getTeamWithMembersStatus(teamId);
+    const { team, members, stats, error } = await getTeamWithMembersStatus(teamId);
+
+    if (error === 'Access denied') {
+         return (
+             <Alert variant="destructive">
+                <Lock className="h-4 w-4" />
+                <AlertTitle>アクセスが拒否されました</AlertTitle>
+                <AlertDescription>
+                    この班の情報を閲覧する権限がありません。
+                     <Button variant="link" asChild><Link href="/dashboard">ダッシュボードに戻る</Link></Button>
+                </AlertDescription>
+            </Alert>
+        )
+    }
 
     if (!team) {
         return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -22,7 +22,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Edit, LogIn, LogOut } from "lucide-react"
+import { Edit, Clock, ArrowUpDown, Search } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,8 +31,12 @@ import { useToast } from '@/hooks/use-toast';
 import { updateUser, logUserEdit, forceToggleAttendance } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type UserWithTeam = Tables<'users'> & { teams: { id: number, name: string } | null };
+
+type SortKey = keyof UserWithTeam | 'teams.name';
+type SortDirection = 'asc' | 'desc';
 
 interface UsersTabProps {
     users: UserWithTeam[];
@@ -40,11 +44,43 @@ interface UsersTabProps {
     currentUser: User;
 }
 
+const SortableHeader = ({
+  children,
+  sortKey,
+  currentSort,
+  onSort,
+}: {
+  children: React.ReactNode;
+  sortKey: SortKey;
+  currentSort: { key: SortKey; direction: SortDirection };
+  onSort: (key: SortKey) => void;
+}) => {
+  const isSorted = currentSort.key === sortKey;
+  return (
+    <TableHead onClick={() => onSort(sortKey)} className="cursor-pointer hover:bg-muted/50">
+      <div className="flex items-center gap-2">
+        {children}
+        {isSorted && (
+          <ArrowUpDown
+            className={`h-4 w-4 transition-transform ${
+              currentSort.direction === 'desc' ? 'rotate-180' : ''
+            }`}
+          />
+        )}
+        {!isSorted && <ArrowUpDown className="h-4 w-4 text-muted-foreground/50" />}
+      </div>
+    </TableHead>
+  );
+};
+
+
 export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<UserWithTeam | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'display_name', direction: 'asc' });
 
     const handleEdit = (user: UserWithTeam) => {
         setEditingUser(user);
@@ -59,6 +95,40 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
             toast({ variant: "destructive", title: "エラー", description: result.message });
         }
     }
+
+    const handleSort = (key: SortKey) => {
+        setSort(prevSort => ({
+            key,
+            direction: prevSort.key === key && prevSort.direction === 'asc' ? 'desc' : 'asc',
+        }));
+    };
+
+    const sortedAndFilteredUsers = useMemo(() => {
+        let filtered = users.filter(user =>
+            user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.card_id.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        filtered.sort((a, b) => {
+            const key = sort.key;
+            let valA: any, valB: any;
+
+            if (key === 'teams.name') {
+                valA = a.teams?.name || '';
+                valB = b.teams?.name || '';
+            } else {
+                valA = a[key as keyof UserWithTeam];
+                valB = b[key as keyof UserWithTeam];
+            }
+
+            if (valA < valB) return sort.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        return filtered;
+    }, [users, searchTerm, sort]);
+
 
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -113,22 +183,35 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                 </CardDescription>
             </CardHeader>
             <CardContent>
+            <div className="mb-4">
+                 <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="表示名またはカードIDで検索..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9"
+                    />
+                </div>
+            </div>
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>表示名</TableHead>
-                        <TableHead>班 / 期生</TableHead>
-                        <TableHead>役割</TableHead>
-                        <TableHead>カードID</TableHead>
-                        <TableHead>状態</TableHead>
+                        <SortableHeader sortKey="display_name" currentSort={sort} onSort={handleSort}>表示名</SortableHeader>
+                        <SortableHeader sortKey="teams.name" currentSort={sort} onSort={handleSort}>班</SortableHeader>
+                         <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>期生</SortableHeader>
+                        <SortableHeader sortKey="role" currentSort={sort} onSort={handleSort}>役割</SortableHeader>
+                        <SortableHeader sortKey="card_id" currentSort={sort} onSort={handleSort}>カードID</SortableHeader>
+                        <SortableHeader sortKey="is_active" currentSort={sort} onSort={handleSort}>状態</SortableHeader>
                         <TableHead>アクション</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {users?.map(user => (
+                    {sortedAndFilteredUsers?.map(user => (
                         <TableRow key={user.id}>
                             <TableCell className="font-medium">{user.display_name}</TableCell>
-                            <TableCell>{user.teams?.name} / {user.generation}期生</TableCell>
+                            <TableCell>{user.teams?.name || '未所属'}</TableCell>
+                             <TableCell>{user.generation}期生</TableCell>
                             <TableCell>
                                 <Badge variant={user.role === 1 ? "destructive" : "outline"}>{user.role === 1 ? '管理者' : '部員'}</Badge>
                             </TableCell>
@@ -137,14 +220,30 @@ export default function UsersTab({ users, teams, currentUser }: UsersTabProps) {
                                 <Badge variant={user.is_active ? "default" : "secondary"}>{user.is_active ? '有効' : '無効'}</Badge>
                             </TableCell>
                             <TableCell className="space-x-2 flex items-center">
-                                <Button title="強制出退勤" aria-haspopup="true" size="icon" variant="ghost" onClick={() => handleForceToggle(user.id)}>
-                                    <LogIn className="h-4 w-4" />
-                                    <span className="sr-only">Force Toggle Attendance</span>
-                                </Button>
-                                <Button title="編集" aria-haspopup="true" size="icon" variant="ghost" onClick={() => handleEdit(user)}>
-                                    <Edit className="h-4 w-4" />
-                                    <span className="sr-only">Edit user</span>
-                                </Button>
+                                <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button size="icon" variant="ghost" onClick={() => handleForceToggle(user.id)}>
+                                            <Clock className="h-4 w-4" />
+                                            <span className="sr-only">Force Toggle Attendance</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>強制的に出退勤を切り替え</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button size="icon" variant="ghost" onClick={() => handleEdit(user)}>
+                                            <Edit className="h-4 w-4" />
+                                            <span className="sr-only">Edit user</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>ユーザー情報を編集</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                </TooltipProvider>
                             </TableCell>
                         </TableRow>
                     ))}

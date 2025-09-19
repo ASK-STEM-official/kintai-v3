@@ -37,6 +37,8 @@ import {
     AlertDialogTrigger,
   } from "@/components/ui/alert-dialog";
 import { deleteTempRegistration } from "@/app/actions";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface TempRegistrationsTabProps {
   tempRegistrations: Tables<'temp_registrations'>[];
@@ -44,18 +46,19 @@ interface TempRegistrationsTabProps {
 
 export default function TempRegistrationsTab({ tempRegistrations: initialTempRegistrations }: TempRegistrationsTabProps) {
   const { toast } = useToast();
+  const [showAll, setShowAll] = useState(false);
   
   const getStatus = (reg: Tables<'temp_registrations'>) => {
     if (reg.is_used) {
-      return { text: "使用済み", variant: "default" as const };
+      return { text: "使用済み", variant: "default" as const, active: false };
     }
     if (new Date(reg.expires_at) < new Date()) {
-      return { text: "期限切れ", variant: "secondary" as const };
+      return { text: "期限切れ", variant: "secondary" as const, active: false };
     }
     if (reg.accessed_at) {
-        return { text: "アクセス済み", variant: "outline" as const };
+        return { text: "アクセス済み", variant: "outline" as const, active: true };
     }
-    return { text: "有効", variant: "destructive" as const };
+    return { text: "有効", variant: "destructive" as const, active: true };
   };
 
   const handleDelete = async (id: string) => {
@@ -67,6 +70,7 @@ export default function TempRegistrationsTab({ tempRegistrations: initialTempReg
     }
   };
 
+  const filteredRegistrations = showAll ? initialTempRegistrations : initialTempRegistrations.filter(reg => getStatus(reg).active);
 
   return (
     <Card>
@@ -77,6 +81,12 @@ export default function TempRegistrationsTab({ tempRegistrations: initialTempReg
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="flex items-center space-x-2 mb-4">
+            <Checkbox id="show-all" checked={showAll} onCheckedChange={(checked) => setShowAll(Boolean(checked))} />
+            <Label htmlFor="show-all" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                期限切れ/使用済みも表示する
+            </Label>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -88,7 +98,7 @@ export default function TempRegistrationsTab({ tempRegistrations: initialTempReg
             </TableRow>
           </TableHeader>
           <TableBody>
-            {initialTempRegistrations.map((reg) => {
+            {filteredRegistrations.map((reg) => {
               const status = getStatus(reg);
               return (
                 <TableRow key={reg.id}>

@@ -40,7 +40,7 @@ async function UserProfile({ user }: { user: any }) {
   )
 }
 
-async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+async function MainSidebar({ user, isAdmin, userTeamId }: { user: any, isAdmin: boolean, userTeamId: number | null }) {
   const { data: teams } = await getAllTeams();
 
   return (
@@ -52,7 +52,7 @@ async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
-        <DashboardNav isAdmin={isAdmin} teams={teams || []} />
+        <DashboardNav isAdmin={isAdmin} teams={teams || []} userTeamId={userTeamId} />
       </SidebarContent>
       <SidebarFooter>
         <UserProfile user={user} />
@@ -61,7 +61,7 @@ async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
   )
 }
 
-function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+function MobileHeader({ user, isAdmin, userTeamId }: { user: any, isAdmin: boolean, userTeamId: number | null }) {
     return (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
@@ -72,7 +72,7 @@ function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
                     </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs flex flex-col p-0">
-                    <MainSidebar user={user} isAdmin={isAdmin} />
+                    <MainSidebar user={user} isAdmin={isAdmin} userTeamId={userTeamId} />
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
@@ -94,7 +94,7 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  const { data: profile, error } = await supabase.from('users').select('id, role').eq('id', user.id).single();
+  const { data: profile, error } = await supabase.from('users').select('id, role, team_id').eq('id', user.id).single();
 
   if (!profile) {
     return redirect("/register/unregistered");
@@ -105,10 +105,10 @@ export default async function DashboardLayout({
   return (
     <SidebarProvider>
       <Sidebar className="hidden sm:flex">
-        <MainSidebar user={user} isAdmin={isAdmin} />
+        <MainSidebar user={user} isAdmin={isAdmin} userTeamId={profile.team_id} />
       </Sidebar>
       <div className="flex flex-col sm:pl-64">
-        <MobileHeader user={user} isAdmin={isAdmin} />
+        <MobileHeader user={user} isAdmin={isAdmin} userTeamId={profile.team_id} />
         <main className="flex-1 p-4 sm:p-6 bg-secondary/50">
           {children}
         </main>

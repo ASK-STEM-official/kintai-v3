@@ -61,7 +61,7 @@ export default async function AdminPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="users">
+      <Tabs defaultValue="users" className="w-full">
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="users">
             <User className="mr-2 h-4 w-4" />
