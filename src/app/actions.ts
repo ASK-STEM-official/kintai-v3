@@ -28,7 +28,12 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     .eq('user_id', user.id)
     .order('timestamp', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (lastAttendanceError) {
+      console.error('Error fetching last attendance:', lastAttendanceError);
+      return { success: false, message: '過去の打刻記録の取得中にエラーが発生しました。', user, type: null };
+  }
 
   const attendanceType = lastAttendance?.type === 'in' ? 'out' : 'in';
 
@@ -53,17 +58,27 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
   const supabase = createSupabaseAdminClient();
-  const token = `qr_${randomUUID()}`;
-  const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  
+  const { data: existingUser, error: existingUserError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('card_id', cardId);
 
-  const { data: existingUser } = await supabase.from('users').select('id').eq('card_id', cardId).single();
-  if (existingUser) {
+  if (existingUserError) {
+    console.error("Error checking for existing user:", existingUserError);
+    return { success: false, message: "ユーザーの確認中にエラーが発生しました。" };
+  }
+  
+  if (existingUser && existingUser.length > 0) {
     return { success: false, message: 'このカードは既に登録されています。' };
   }
+
+  const token = `qr_${randomUUID()}`;
+  const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   
   const { error } = await supabase.from('temp_registrations').upsert(
     { card_id: cardId, qr_token: token, expires_at: expires_at, is_used: false },
-    { onConflict: 'card_id' }
+    { onConflict: 'card_id', ignoreDuplicates: false }
   );
   
   if (error) {

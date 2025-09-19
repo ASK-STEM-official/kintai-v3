@@ -6,8 +6,10 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { recordAttendance, createTempRegistration } from '@/app/actions';
 import { Database } from '@/lib/types';
 import Clock from '@/components/kiosk/Clock';
-import { Bell, LogIn, LogOut, XCircle, UserPlus, Wifi, WifiOff } from 'lucide-react';
+import { Bell, LogIn, LogOut, XCircle, UserPlus, Wifi, WifiOff, Copy } from 'lucide-react';
 import Image from 'next/image';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
 type AttendanceType = 'in' | 'out' | null;
@@ -24,9 +26,9 @@ export default function KioskPage() {
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpiry, setQrExpiry] = useState<number>(0);
   const [announcement, setAnnouncement] = useState<Announcement>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
+  const { toast } = useToast();
 
 
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -37,10 +39,6 @@ export default function KioskPage() {
     const fetchData = async () => {
         const { data: initialAnnouncement } = await supabase.from('announcements').select('*').eq('is_current', true).limit(1).maybeSingle();
         setAnnouncement(initialAnnouncement);
-        
-        const { data: teamsData } = await supabase.from('teams').select('*');
-        setTeams(teamsData || []);
-        
         setKioskState('idle');
     };
     fetchData();
@@ -91,7 +89,7 @@ export default function KioskPage() {
         setSubMessage('登録するには「/」キーを押してください');
       }
     }
-  }, [kioskState, teams]);
+  }, [kioskState]);
 
 
   useEffect(() => {
@@ -258,6 +256,22 @@ export default function KioskPage() {
     if (!qrToken) return null;
     const url = `${process.env.NEXT_PUBLIC_APP_URL}/register/${qrToken}`;
 
+    const handleCopy = () => {
+        navigator.clipboard.writeText(url).then(() => {
+            toast({
+                title: "コピーしました",
+                description: "登録用リンクをクリップボードにコピーしました。",
+            });
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            toast({
+                variant: 'destructive',
+                title: "コピー失敗",
+                description: "リンクのコピーに失敗しました。",
+            });
+        });
+    };
+
     return (
       <div className="text-center flex flex-col items-center">
         <p className="text-4xl font-bold mb-4">QRコード登録</p>
@@ -272,6 +286,12 @@ export default function KioskPage() {
             />
         </div>
         <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取り登録を完了してください。</p>
+        <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg">
+            <p className="text-sm text-gray-300 font-mono truncate max-w-xs">{url}</p>
+            <Button variant="ghost" size="icon" onClick={handleCopy}>
+                <Copy className="h-5 w-5" />
+            </Button>
+        </div>
         <QrTimer />
         <p className="text-sm text-gray-500 mt-4">※QR読み取り後、この画面は自動的に戻ります</p>
       </div>
