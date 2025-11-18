@@ -13,7 +13,7 @@ import TempRegistrationsTab from "./_components/TempRegistrationsTab";
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: { user: currentUser } } = await supabase.auth.getUser();
 
   const [

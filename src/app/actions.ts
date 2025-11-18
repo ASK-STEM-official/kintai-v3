@@ -11,7 +11,7 @@ import { differenceInSeconds, startOfDay, endOfDay, subDays, format, startOfMont
 type UserWithTeam = Tables<'users'> & { teams: Tables<'teams'> | null };
 
 export async function recordAttendance(cardId: string): Promise<{ success: boolean; message: string; user: UserWithTeam | null; type: 'in' | 'out' | null; anomalyReason?: string }> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
 
@@ -60,7 +60,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
 
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
   
   const { data: existingUser, error: existingUserError } = await supabase
@@ -94,7 +94,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
 }
 
 export async function getTempRegistration(token: string) {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from('temp_registrations')
         .select('*')
@@ -103,7 +103,7 @@ export async function getTempRegistration(token: string) {
     if (error || !data) return null;
 
     if (!data.accessed_at) {
-        const admin = createSupabaseAdminClient();
+        const admin = await createSupabaseAdminClient();
         await admin.from('temp_registrations').update({ accessed_at: new Date().toISOString() }).eq('id', data.id);
     }
 
@@ -120,8 +120,8 @@ export async function completeRegistration(formData: FormData) {
     return redirect(`/register/${token}?error=Missing form data`);
   }
 
-  const supabase = createSupabaseServerClient();
-  const adminSupabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseServerClient();
+  const adminSupabase = await createSupabaseAdminClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.user_metadata.provider_id) {
@@ -176,7 +176,7 @@ export async function completeRegistration(formData: FormData) {
 
 
 export async function signInWithDiscord() {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
@@ -199,8 +199,8 @@ export async function signInWithDiscord() {
 }
 
 export async function signInAsAnonymousAdmin() {
-    const adminSupabase = createSupabaseAdminClient();
-    const supabase = createSupabaseServerClient();
+    const adminSupabase = await createSupabaseAdminClient();
+    const supabase = await createSupabaseServerClient();
     const email = 'admin@example.com';
     const password = 'password';
 
@@ -278,15 +278,15 @@ export async function signInAsAnonymousAdmin() {
 
 
 export async function signOut() {
-    cookies().getAll();
-    const supabase = createSupabaseServerClient();
+    (await cookies()).getAll();
+    const supabase = await createSupabaseServerClient();
     await supabase.auth.signOut();
     revalidatePath('/', 'layout');
     return redirect('/login');
 }
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const start = startOfMonth(month);
   const end = endOfMonth(month);
   
@@ -316,7 +316,7 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
 }
 
 export async function getMonthlyAttendanceSummary(month: Date) {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   const start = format(startOfMonth(month), 'yyyy-MM-dd');
   const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -381,7 +381,7 @@ export async function getMonthlyAttendanceSummary(month: Date) {
 
 
 export async function calculateTotalActivityTime(userId: string, days: number): Promise<number> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const startDate = subDays(new Date(), days).toISOString();
 
   const { data: attendances, error } = await supabase
@@ -416,7 +416,7 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 
 // Admin actions
 export async function getAllUsersWithStatus() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: users, error: usersError } = await supabase.from('users').select('*, teams(id, name)');
     if (usersError) return { data: [], error: usersError };
 
@@ -445,12 +445,12 @@ export async function getAllUsersWithStatus() {
 }
 
 export async function getAllTeams() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase.from('teams').select('*').order('name');
 }
 
 export async function getTeamsWithMemberStatus() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: teams, error: teamsError } = await supabase.from('teams').select('id, name').order('name');
     if (teamsError) return [];
 
@@ -493,7 +493,7 @@ export async function getTeamsWithMemberStatus() {
 
 
 export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     
     if (data.card_id) {
         data.card_id = data.card_id.replace(/:/g, '').toLowerCase();
@@ -506,7 +506,7 @@ export async function updateUser(userId: string, data: TablesUpdate<'users'>) {
 }
 
 export async function createTeam(name: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.from('teams').insert({ name });
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -515,7 +515,7 @@ export async function createTeam(name: string) {
 }
 
 export async function updateTeam(id: number, name: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.from('teams').update({ name }).eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -524,7 +524,7 @@ export async function updateTeam(id: number, name: string) {
 }
 
 export async function deleteTeam(id: number) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { count } = await supabase.from('users').select('*', { count: 'exact' }).eq('team_id', id);
 
     if (count && count > 0) {
@@ -539,7 +539,7 @@ export async function deleteTeam(id: number) {
 }
 
 export async function forceLogoutAll() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     
     // 1. Get user IDs that are currently 'in'
     const { data: currentlyIn, error: currentlyInError } = await supabase
@@ -592,7 +592,7 @@ export async function forceLogoutAll() {
 }
 
 export async function forceToggleAttendance(userId: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
 
     const { data: lastAttendance, error: lastAttendanceError } = await supabase
         .from('attendances')
@@ -620,7 +620,7 @@ export async function forceToggleAttendance(userId: string) {
 }
 
 export async function getTeamWithMembersStatus(teamId: number) {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
@@ -685,7 +685,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
 
 
 async function getTeamStats(teamId: number) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const today = new Date();
 
     const { count: totalMembersCount, error: totalMembersError } = await supabase
@@ -719,7 +719,7 @@ async function getTeamStats(teamId: number) {
 
 
 export async function getMonthlyTeamAttendanceStats(teamId: number, days: number): Promise<number> {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: teamMembers, error: teamMembersError } = await supabase
         .from('users')
         .select('id')
@@ -767,12 +767,12 @@ export async function getMonthlyTeamAttendanceStats(teamId: number, days: number
 
 
 export async function getAllAnnouncements() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase.from('announcements').select('*, users(display_name)').order('created_at', { ascending: false });
 }
 
 export async function createAnnouncement(data: TablesInsert<'announcements'>) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.from('announcements').insert(data);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -780,7 +780,7 @@ export async function createAnnouncement(data: TablesInsert<'announcements'>) {
 }
 
 export async function updateAnnouncement(id: string, data: TablesUpdate<'announcements'>) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     if(data.is_current) {
         await supabase.from('announcements').update({ is_current: false }).eq('is_current', true);
     }
@@ -792,7 +792,7 @@ export async function updateAnnouncement(id: string, data: TablesUpdate<'announc
 }
 
 export async function deleteAnnouncement(id: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.from('announcements').update({ is_active: false }).eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -800,12 +800,12 @@ export async function deleteAnnouncement(id: string) {
 }
 
 export async function logUserEdit(logData: TablesInsert<'user_edit_logs'>) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     await supabase.from('user_edit_logs').insert(logData);
 }
 
 export async function getAllUserEditLogs() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase
         .from('user_edit_logs')
         .select('*, editor:editor_user_id(display_name), target:target_user_id(display_name)')
@@ -813,7 +813,7 @@ export async function getAllUserEditLogs() {
 }
 
 export async function getAllDailyLogoutLogs() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase
         .from('daily_logout_logs')
         .select('*')
@@ -821,12 +821,12 @@ export async function getAllDailyLogoutLogs() {
 }
 
 export async function getTempRegistrations() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase.from('temp_registrations').select('*').order('created_at', { ascending: false });
 }
 
 export async function deleteTempRegistration(id: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.from('temp_registrations').delete().eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
