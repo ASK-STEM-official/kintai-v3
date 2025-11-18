@@ -8,7 +8,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { differenceInSeconds, startOfDay, endOfDay, subDays, format, startOfMonth, endOfMonth } from 'date-fns';
-import { fetchAllMemberNames } from '@/lib/name-api';
+import { fetchAllMemberNames, fetchMemberNickname } from '@/lib/name-api';
 import { fetchMemberStatus } from '@/lib/member-status-api';
 
 type Member = Tables<'member', 'members'>;
@@ -25,7 +25,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('user_id, member:member_members!inner(display_name)')
+    .select('supabase_auth_user_id, card_id')
     .eq('card_id', normalizedCardId)
     .single();
 
@@ -33,8 +33,25 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     return { success: false, message: '未登録のカードです。', user: null, type: null };
   }
 
-  const userId = attendanceUser.user_id;
-  const userDisplayName = attendanceUser.member?.display_name || '名無しさん';
+  const userId = attendanceUser.supabase_auth_user_id;
+  
+  // member.members テーブルから Discord UID を取得
+  const { data: memberData } = await supabase
+    .schema('member')
+    .from('members')
+    .select('discord_uid')
+    .eq('supabase_auth_user_id', userId)
+    .single();
+  
+  let userDisplayName = '名無しさん';
+  
+  // Discord UIDがある場合、APIから本名を取得
+  if (memberData?.discord_uid) {
+    const { data: nickname } = await fetchMemberNickname(memberData.discord_uid);
+    if (nickname) {
+      userDisplayName = nickname;
+    }
+  }
 
   const { data: lastAttendance, error: lastAttendanceError } = await supabase
     .schema('attendance')
@@ -79,7 +96,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
   const { data: existingUser, error: existingUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('user_id')
+    .select('supabase_auth_user_id')
     .eq('card_id', normalizedCardId)
     .single();
 
@@ -179,11 +196,28 @@ export async function completeRegistration(formData: FormData) {
   }
   
   const attendanceUserData: TablesInsert<'attendance', 'users'> = {
-      user_id: user.id,
+      supabase_auth_user_id: user.id,
       card_id: tempReg.card_id
   }
-  // This should be user_id but the table is keyed on supabase_auth_user_id
-  const { error: insertAttendanceUserError } = await adminSupabase.schema('attendance').from('users').upsert({ supabase_auth_user_id: user.id, card_id: tempReg.card_id }, { onConflict: 'supabase_auth_user_id' });
+  
+  console.log('[DEBUG] About to upsert attendance user:', { 
+    supabase_auth_user_id: user.id, 
+    card_id: tempReg.card_id,
+    hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    serviceRoleKeyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20)
+  });
+  
+  // supabase_auth_user_id カラムに user_id を設定
+  const { error: insertAttendanceUserError } = await adminSupabase
+    .schema('attendance')
+    .from('users')
+    .upsert(
+      { 
+        supabase_auth_user_id: user.id,
+        card_id: tempReg.card_id 
+      }, 
+      { onConflict: 'supabase_auth_user_id' }
+    );
   if (insertAttendanceUserError) {
       console.error("Error creating attendance user link:", insertAttendanceUserError);
       return redirect(`/register/${token}?error=Failed to link card to user.`);
@@ -196,8 +230,21 @@ export async function completeRegistration(formData: FormData) {
 }
 
 
-export async function signInWithDiscord() {
+export async function signInWithDiscord(formData?: FormData) {
     const supabase = await createSupabaseServerClient();
+    const next = formData?.get('next') as string | undefined;
+    
+    // 登録ページから来た場合、nextパラメータをCookieに保存
+    if (next) {
+        const cookieStore = await cookies();
+        cookieStore.set('auth_next', next, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 600, // 10分
+            path: '/'
+        });
+    }
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
@@ -405,16 +452,96 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 }
 
 // Admin actions
+// @ts-ignore - 型定義が更新されていないが、実際のDBスキーマには存在する
 export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
-    const { data: users, error: usersError } = await supabase
-        .from('users_with_latest_attendance')
-        .select('*');
+    
+    // @ts-ignore
+    // member.membersからユーザー情報を取得
+    const { data: members, error: membersError } = await supabase
+        .schema('member')
+        .from('members')
+        .select(`
+            supabase_auth_user_id,
+            discord_uid,
+            generation,
+            is_admin,
+            student_number,
+            deleted_at,
+            member_team_relations(team_id, teams(name))
+        `);
 
-    if (usersError) {
-        console.error('Error fetching users with status:', usersError);
-        return { data: [], error: usersError };
+    if (membersError) {
+        console.error('Error fetching members:', membersError);
+        return { data: [], error: membersError };
     }
+
+    // attendance.usersからカード情報を取得
+    const { data: attendanceUsers, error: attendanceUsersError } = await supabase
+        .schema('attendance')
+        .from('users')
+        .select('supabase_auth_user_id, card_id');
+
+    const cardMap = new Map(attendanceUsers?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
+
+    // @ts-ignore
+    // 最新の打刻情報を取得
+    const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
+    const { data: latestAttendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('user_id, type, timestamp')
+        .in('user_id', memberIds)
+        .order('timestamp', { ascending: false });
+
+    // 各ユーザーの最新打刻を抽出
+    const latestAttendanceMap = new Map<string, { type: string; timestamp: string }>();
+    latestAttendances?.forEach(att => {
+        if (!latestAttendanceMap.has(att.user_id)) {
+            latestAttendanceMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
+        }
+    });
+
+    // @ts-ignore
+    // Discord UIDから本名を一括取得
+    const discordUids = members?.map(m => m.discord_uid).filter(Boolean) || [];
+    const nameMap = new Map<string, string>();
+    
+    // 本名取得API呼び出し（並列処理）
+    await Promise.all(
+        discordUids.map(async (discord_uid) => {
+            if (discord_uid) {
+                const { data: nickname } = await fetchMemberNickname(discord_uid);
+                if (nickname) {
+                    nameMap.set(discord_uid, nickname);
+                }
+            }
+        })
+    );
+
+    // @ts-ignore
+    // データを結合
+    const users = members?.map((member: any) => {
+        const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
+        const teamRelation = member.member_team_relations?.[0];
+        const realName = member.discord_uid ? nameMap.get(member.discord_uid) : null;
+        
+        return {
+            id: member.supabase_auth_user_id,
+            display_name: realName || '名無しさん',
+            card_id: cardMap.get(member.supabase_auth_user_id) || null,
+            team_name: teamRelation?.teams?.name || null,
+            team_id: teamRelation?.team_id || null,
+            generation: member.generation,
+            is_admin: member.is_admin,
+            latest_attendance_type: latestAttendance?.type || null,
+            latest_timestamp: latestAttendance?.timestamp || null,
+            deleted_at: member.deleted_at,
+            student_number: member.student_number,
+            status: latestAttendance?.type === 'in' ? 1 : 0,
+        };
+    }) || [];
+
     return { data: users, error: null };
 }
 
@@ -805,10 +932,220 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
     return { success: true, message: `${updatedCount}人のユーザー表示名を正常に更新しました。`, count: updatedCount };
 }
 
+// 全体統計情報を取得
+export async function getOverallStats(days: number = 30) {
+    const supabase = await createSupabaseAdminClient();
+    const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
     
+    // 今日の出席人数を取得
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const { data: todayAttendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('user_id, type')
+        .eq('date', today)
+        .order('timestamp', { ascending: false });
+    
+    // 今日出勤したユニークなユーザー（最後の記録がinの人）
+    const userLastStatus = new Map<string, string>();
+    todayAttendances?.forEach(att => {
+        if (!userLastStatus.has(att.user_id)) {
+            userLastStatus.set(att.user_id, att.type);
+        }
+    });
+    const todayActiveUsers = Array.from(userLastStatus.values()).filter(type => type === 'in').length;
+    
+    // 総登録部員数
+    const { count: totalMembers } = await supabase
+        .schema('member')
+        .from('members')
+        .select('*', { count: 'exact', head: true });
+    
+    // 過去N日間のユニークな出勤日数
+    const { data: distinctDates } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('date')
+        .eq('type', 'in')
+        .gte('date', startDate);
+    
+    const activeDaysCount = distinctDates ? new Set(distinctDates.map(d => d.date)).size : 0;
+    
+    // 過去N日間の総活動時間（全員の合計）
+    const { data: allAttendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('user_id, type, timestamp')
+        .gte('date', startDate)
+        .order('user_id')
+        .order('timestamp', { ascending: true });
+    
+    let totalActivityHours = 0;
+    if (allAttendances) {
+        const userSessions = new Map<string, { in: Date | null }>();
+        
+        for (const att of allAttendances) {
+            const session = userSessions.get(att.user_id) || { in: null };
+            
+            if (att.type === 'in') {
+                session.in = new Date(att.timestamp);
+            } else if (att.type === 'out' && session.in) {
+                const duration = differenceInSeconds(new Date(att.timestamp), session.in) / 3600;
+                totalActivityHours += duration;
+                session.in = null;
+            }
+            
+            userSessions.set(att.user_id, session);
+        }
+    }
+    
+    return {
+        todayActiveUsers,
+        totalMembers: totalMembers || 0,
+        activeDaysCount,
+        totalActivityHours: Math.round(totalActivityHours * 10) / 10,
+    };
+}
 
+// 日別の出席人数を取得（カレンダー用）
+export async function getDailyAttendanceCounts(year: number, month: number) {
+    const supabase = await createSupabaseAdminClient();
+    const start = startOfMonth(new Date(year, month - 1));
+    const end = endOfMonth(new Date(year, month - 1));
     
+    const { data: attendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('date, user_id, type')
+        .gte('date', format(start, 'yyyy-MM-dd'))
+        .lte('date', format(end, 'yyyy-MM-dd'))
+        .order('date')
+        .order('timestamp', { ascending: false });
+    
+    const dailyCounts = new Map<string, number>();
+    
+    if (attendances) {
+        const dateUserStatus = new Map<string, Map<string, string>>();
+        
+        attendances.forEach(att => {
+            const key = att.date;
+            if (!dateUserStatus.has(key)) {
+                dateUserStatus.set(key, new Map());
+            }
+            const userMap = dateUserStatus.get(key)!;
+            if (!userMap.has(att.user_id)) {
+                userMap.set(att.user_id, att.type);
+            }
+        });
+        
+        dateUserStatus.forEach((userMap, date) => {
+            const count = Array.from(userMap.values()).filter(type => type === 'in').length;
+            dailyCounts.set(date, count);
+        });
+    }
+    
+    return Object.fromEntries(dailyCounts);
+}
 
+// 特定日の詳細な出席情報を取得（班別・学年別）
+export async function getDailyAttendanceDetails(date: string) {
+    const supabase = await createSupabaseAdminClient();
     
+    const { data: attendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select(`
+            user_id,
+            type,
+            timestamp
+        `)
+        .eq('date', date)
+        .order('timestamp', { ascending: false });
+    
+    if (!attendances) {
+        return { byTeam: {}, byGrade: {}, total: 0 };
+    }
+    
+    // 各ユーザーの最後の状態を取得
+    const userLastStatus = new Map<string, string>();
+    attendances.forEach(att => {
+        if (!userLastStatus.has(att.user_id)) {
+            userLastStatus.set(att.user_id, att.type);
+        }
+    });
+    
+    const activeUserIds = Array.from(userLastStatus.entries())
+        .filter(([_, type]) => type === 'in')
+        .map(([userId, _]) => userId);
+    
+    if (activeUserIds.length === 0) {
+        return { byTeam: {}, byGrade: {}, total: 0 };
+    }
+    
+    // ユーザー情報を取得
+    const { data: members } = await supabase
+        .schema('member')
+        .from('members')
+        .select(`
+            supabase_auth_user_id,
+            generation,
+            member_team_relations(
+                teams(name)
+            )
+        `)
+        .in('supabase_auth_user_id', activeUserIds);
+    
+    const byTeam: Record<string, number> = {};
+    const byGrade: Record<string, number> = {};
+    
+    members?.forEach(member => {
+        // 班別
+        const teamName = member.member_team_relations?.[0]?.teams?.name || '未所属';
+        byTeam[teamName] = (byTeam[teamName] || 0) + 1;
+        
+        // 学年別
+        const grade = member.generation ? `${member.generation}期` : '不明';
+        byGrade[grade] = (byGrade[grade] || 0) + 1;
+    });
+    
+    return {
+        byTeam,
+        byGrade,
+        total: activeUserIds.length,
+    };
+}
 
+// カードIDを変更
+export async function updateUserCardId(userId: string, newCardId: string) {
+    const supabase = await createSupabaseAdminClient();
     
+    // カードIDを正規化（コロンを削除、小文字化）
+    const normalizedCardId = newCardId.replace(/:/g, '').toLowerCase();
+    
+    // 既存のカードIDと重複していないか確認
+    const { data: existingCard } = await supabase
+        .schema('attendance')
+        .from('users')
+        .select('supabase_auth_user_id')
+        .eq('card_id', normalizedCardId)
+        .single();
+    
+    if (existingCard && existingCard.supabase_auth_user_id !== userId) {
+        return { success: false, message: 'このカードIDは既に別のユーザーに登録されています。' };
+    }
+    
+    // attendance.users テーブルでカードIDを更新
+    const { error } = await supabase
+        .schema('attendance')
+        .from('users')
+        .update({ card_id: normalizedCardId })
+        .eq('supabase_auth_user_id', userId);
+    
+    if (error) {
+        console.error('Card ID update error:', error);
+        return { success: false, message: 'カードIDの更新に失敗しました。' };
+    }
+    
+    revalidatePath('/admin');
+    return { success: true, message: 'カードIDを更新しました。' };
+}

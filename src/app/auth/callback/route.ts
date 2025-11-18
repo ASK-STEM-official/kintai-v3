@@ -3,16 +3,27 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { fetchMemberStatus } from '@/lib/member-status-api';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 export async function GET(request: Request) {
   const origin = process.env.NEXT_PUBLIC_APP_URL!;
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  
+  // Cookieから登録ページのパスを取得（もしあれば）
+  const cookieStore = await cookies();
+  const authNext = cookieStore.get('auth_next')?.value;
+  const next = authNext || searchParams.get('next') || '/dashboard';
+  
+  // 使用済みCookieを削除
+  if (authNext) {
+    cookieStore.delete('auth_next');
+  }
 
   console.log('[DEBUG AUTH] Callback URL:', request.url);
   console.log('[DEBUG AUTH] Code:', code?.substring(0, 10) + '...');
   console.log('[DEBUG AUTH] Origin:', origin);
+  console.log('[DEBUG AUTH] Next:', next);
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=認証コードが見つかりません。`);
@@ -49,20 +60,38 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/login?error=DiscordユーザーIDが取得できませんでした。`);
   }
 
+  // Discord サーバー所属チェック（一時的にコメントアウト）
+  /*
   const { data: memberStatus, error: apiError } = await fetchMemberStatus(discordUid);
   
   if (apiError) {
       console.error('Error fetching member status from API:', apiError);
       await supabase.auth.signOut();
-      return NextResponse.redirect(`${origin}/login?error=APIとの通信中にエラーが発生しました。`);
+      return NextResponse.redirect(`${origin}/login?error=APIとの通信中にエラーが発生しました。しばらく待ってから再度お試しください。`);
   }
 
-  if (memberStatus && memberStatus.is_in_server) {
-      return NextResponse.redirect(`${origin}${next}`);
-  } else {
+  if (!memberStatus || !memberStatus.is_in_server) {
       await supabase.auth.signOut();
       return NextResponse.redirect(`${origin}/login?error=指定されたDiscordサーバーのメンバーではありません。`);
   }
-}
+  */
+
+  // member.members テーブルにユーザーが登録されているかチェック
+  const { data: memberRecord, error: memberError } = await supabase
+    .schema('member')
+    .from('members')
+    .select('supabase_auth_user_id')
+    .eq('discord_uid', discordUid)
+    .single();
+
+  if (memberError || !memberRecord) {
+      console.log('[DEBUG AUTH] User not found in member.members table');
+      console.log('[DEBUG AUTH] Discord UID:', discordUid);
+      await supabase.auth.signOut();
+      return NextResponse.redirect(`${origin}/login?error=not_registered`);
+  }
+
+  console.log('[DEBUG AUTH] User found in members table, redirecting to:', next);
+  return NextResponse.redirect(`${origin}${next}`);
 
     

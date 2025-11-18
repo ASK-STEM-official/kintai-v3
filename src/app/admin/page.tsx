@@ -50,14 +50,14 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">管琁E��E��チE��ュボ�EチE/h1>
-        <p className="text-muted-foreground">ユーザーとシスチE��を管琁E��ます、E/p>
+        <h1 className="text-3xl font-bold">管理者ダッシュボード</h1>
+        <p className="text-muted-foreground">ユーザーとシステムを管理します。</p>
       </div>
 
       {errors.length > 0 && (
         <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>チE�Eタの読み込みエラー</AlertTitle>
+            <AlertTitle>データの読み込みエラー</AlertTitle>
             <AlertDescription>
                 <ul className="list-disc pl-5">
                     {errors.map((error, index) => <li key={index}>{(error as Error).message}</li>)}
@@ -70,15 +70,15 @@ export default async function AdminPage() {
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           <TabsTrigger value="users">
             <User className="mr-2 h-4 w-4" />
-            ユーザー管琁E
+            ユーザー管理
           </TabsTrigger>
           <TabsTrigger value="teams">
             <Users2 className="mr-2 h-4 w-4" />
-            班管琁E
+            班管理
           </TabsTrigger>
            <TabsTrigger value="temp_registrations">
             <FilePenLine className="mr-2 h-4 w-4" />
-            仮登録管琁E
+            仮登録管理
           </TabsTrigger>
           <TabsTrigger value="logs">
             <History className="mr-2 h-4 w-4" />
@@ -86,7 +86,7 @@ export default async function AdminPage() {
           </TabsTrigger>
            <TabsTrigger value="system">
             <Power className="mr-2 h-4 w-4" />
-            シスチE��
+            システム
           </TabsTrigger>
         </TabsList>
         <TabsContent value="users">

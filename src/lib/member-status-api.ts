@@ -16,7 +16,9 @@ const api = axios.create({
     headers: {
         'Authorization': `Bearer ${API_TOKEN}`,
         'Content-Type': 'application/json'
-    }
+    },
+    timeout: 10000, // 10秒でタイムアウト
+    validateStatus: (status) => status < 500, // 500番台エラーは例外としてスロー
 });
 
 type MemberStatus = {
@@ -40,6 +42,7 @@ export async function fetchMemberStatus(discordUid: string): Promise<{ data: Mem
         console.error('[DEBUG] API not configured!');
         return { data: null, error: "API not configured." };
     }
+    
     try {
         const url = `/api/member/status?discord_uid=${discordUid}`;
         console.log('[DEBUG] Making request to:', url);
@@ -61,9 +64,21 @@ export async function fetchMemberStatus(discordUid: string): Promise<{ data: Mem
         return { data: null, error: "Unexpected response format"};
     } catch (error: any) {
         console.error('[DEBUG] Error caught:', error.message);
+        console.error('[DEBUG] Error code:', error.code);
         console.error('[DEBUG] Error response:', error.response?.status, error.response?.data);
         
-        // APIドキュメント上、400エラー（discord_uid不足）以外は想定外
+        // エラーの種類を判別
+        if (error.code === 'ECONNABORTED') {
+            console.error(`API request timeout for UID ${discordUid}`);
+            return { data: null, error: { message: 'API request timeout', code: 'TIMEOUT' } };
+        } else if (error.response?.status >= 500) {
+            console.error(`API server error (${error.response.status}) for UID ${discordUid}`);
+            return { data: null, error: { message: 'API server error', code: 'SERVER_ERROR', status: error.response.status } };
+        } else if (error.response?.status === 400) {
+            console.error(`Bad request for UID ${discordUid}`);
+            return { data: null, error: { message: 'Invalid Discord UID', code: 'BAD_REQUEST' } };
+        }
+        
         console.error(`Failed to fetch member status for UID ${discordUid}:`, error);
         return { data: null, error };
     }

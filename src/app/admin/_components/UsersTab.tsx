@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowUpDown, Search, RefreshCw } from "lucide-react"
+import { ArrowUpDown, Search, RefreshCw, Edit, Eye } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { forceToggleAttendance, updateAllUserDisplayNames } from '@/app/actions';
+import { forceToggleAttendance, updateAllUserDisplayNames, updateUserCardId } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 import { convertGenerationToGrade } from '@/lib/utils';
@@ -31,6 +31,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import Link from "next/link";
 
 type UserWithDetails = {
     id: string;
@@ -93,6 +104,9 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'display_name', direction: 'asc' });
     const [isToggling, startToggleTransition] = useTransition();
     const [isUpdatingNames, startUpdatingNamesTransition] = useTransition();
+    const [isUpdatingCardId, startUpdatingCardIdTransition] = useTransition();
+    const [editingUser, setEditingUser] = useState<{ id: string; currentCardId: string } | null>(null);
+    const [newCardId, setNewCardId] = useState('');
 
     const handleForceToggle = (userId: string) => {
         startToggleTransition(async () => {
@@ -113,6 +127,21 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                 description: result.message,
                 variant: result.success ? "default" : "destructive",
             });
+        });
+    };
+
+    const handleUpdateCardId = (userId: string) => {
+        startUpdatingCardIdTransition(async () => {
+            const result = await updateUserCardId(userId, newCardId);
+            toast({
+                title: result.success ? "成功" : "エラー",
+                description: result.message,
+                variant: result.success ? "default" : "destructive",
+            });
+            if (result.success) {
+                setEditingUser(null);
+                setNewCardId('');
+            }
         });
     };
 
@@ -218,10 +247,68 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                              <TableCell>
                                 <Badge variant={!user.deleted_at ? "default" : "secondary"}>{!user.deleted_at ? '有効' : '無効'}</Badge>
                             </TableCell>
-                            <TableCell className="space-x-2 flex items-center">
-                                <Button size="sm" variant="outline" onClick={() => handleForceToggle(user.id)} disabled={isToggling}>
-                                    {user.latest_attendance_type === 'in' ? '強制退勤させる' : '強制出勤させる'}
-                                </Button>
+                            <TableCell className="space-x-2">
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" variant="outline" asChild>
+                                        <Link href={`/admin/users/${user.id}`}>
+                                            <Eye className="h-4 w-4 mr-1" />
+                                            詳細
+                                        </Link>
+                                    </Button>
+                                    <Dialog open={editingUser?.id === user.id} onOpenChange={(open) => {
+                                        if (!open) {
+                                            setEditingUser(null);
+                                            setNewCardId('');
+                                        }
+                                    }}>
+                                        <DialogTrigger asChild>
+                                            <Button size="sm" variant="outline" onClick={() => {
+                                                setEditingUser({ id: user.id, currentCardId: user.card_id || '' });
+                                                setNewCardId(user.card_id || '');
+                                            }}>
+                                                <Edit className="h-4 w-4 mr-1" />
+                                                カードID
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>カードIDを変更</DialogTitle>
+                                                <DialogDescription>
+                                                    {user.display_name} さんのカードIDを変更します
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="grid gap-4 py-4">
+                                                <div className="grid gap-2">
+                                                    <Label htmlFor="cardId">新しいカードID</Label>
+                                                    <Input
+                                                        id="cardId"
+                                                        value={newCardId}
+                                                        onChange={(e) => setNewCardId(e.target.value)}
+                                                        placeholder="カードIDを入力"
+                                                        className="font-mono"
+                                                    />
+                                                    <p className="text-sm text-muted-foreground">
+                                                        現在: <code className="font-mono">{user.card_id || '未設定'}</code>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={() => {
+                                                    setEditingUser(null);
+                                                    setNewCardId('');
+                                                }}>
+                                                    キャンセル
+                                                </Button>
+                                                <Button onClick={() => handleUpdateCardId(user.id)} disabled={isUpdatingCardId || !newCardId}>
+                                                    {isUpdatingCardId ? '更新中...' : '更新'}
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                    <Button size="sm" variant={user.latest_attendance_type === 'in' ? 'destructive' : 'default'} onClick={() => handleForceToggle(user.id)} disabled={isToggling}>
+                                        {user.latest_attendance_type === 'in' ? '強制退勤' : '強制出勤'}
+                                    </Button>
+                                </div>
                             </TableCell>
                         </TableRow>
                     ))}

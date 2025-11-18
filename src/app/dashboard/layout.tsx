@@ -11,24 +11,54 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 import DashboardNav from "./_components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { fetchMemberNickname } from "@/lib/name-api";
 
 async function UserProfile({ user }: { user: any }) {
-  const { data: profile } = await createSupabaseServerClient().schema('member').from('members').select('display_name').eq('id', user.id).single();
-  const initials = profile?.display_name?.charAt(0).toUpperCase() || 'U';
+  const supabase = await createSupabaseServerClient();
+  
+  let displayName = '名無しさん';
+  
+  try {
+    const { data: profile, error } = await supabase
+      .schema('member')
+      .from('members')
+      .select('discord_uid')
+      .eq('supabase_auth_user_id', user.id)
+      .single();
+    
+    if (!error && profile) {
+      // Discord UIDがある場合、APIから本名を取得
+      if (profile.discord_uid) {
+        try {
+          const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
+          if (nickname) {
+            displayName = nickname;
+          }
+        } catch (e) {
+          // API エラーは無視
+          console.error('Failed to fetch nickname:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch profile:', e);
+  }
+  
+  const initials = displayName.charAt(0).toUpperCase() || 'U';
   
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
         <Avatar>
-            <AvatarImage src={user.user_metadata.avatar_url} alt={profile?.display_name || ''} />
+            <AvatarImage src={user.user_metadata.avatar_url} alt={displayName} />
             <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
         <div className="flex flex-col">
-            <span className="font-semibold text-sm">{profile?.display_name || '名無しさん'}</span>
+            <span className="font-semibold text-sm">{displayName}</span>
             <span className="text-xs text-muted-foreground">{user.email?.includes('anonymous') ? '' : user.email}</span>
         </div>
       </div>
@@ -41,7 +71,7 @@ async function UserProfile({ user }: { user: any }) {
   )
 }
 
-async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: number }[] }) {
+async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: string }[] }) {
   const teams = await getTeamsWithMemberStatus();
 
   return (
@@ -65,7 +95,7 @@ async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: b
   )
 }
 
-function MobileHeader({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: number }[] }) {
+function MobileHeader({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: string }[] }) {
     return (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
@@ -76,6 +106,7 @@ function MobileHeader({ user, isAdmin, userTeams }: { user: any, isAdmin: boolea
                     </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs flex flex-col p-0">
+                    <SheetTitle className="sr-only">ナビゲーションメニュー</SheetTitle>
                     <MainSidebar user={user} isAdmin={isAdmin} userTeams={userTeams} />
                 </SheetContent>
             </Sheet>
@@ -98,10 +129,31 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  const { data: profile } = await supabase.schema('member').from('members').select('id, is_admin, member_team_relations(team_id)').eq('id', user.id).single();
+  // member.members テーブルからプロフィールを取得
+  const { data: profile, error: profileError } = await supabase
+    .schema('member')
+    .from('members')
+    .select('is_admin, member_team_relations(team_id)')
+    .eq('supabase_auth_user_id', user.id)
+    .single();
 
-  if (!profile) {
-    await supabase.auth.signOut();
+  if (profileError || !profile) {
+    console.error('Profile fetch error:', profileError);
+    console.error('User ID:', user.id);
+    // プロフィールが見つからない場合は登録ページへ
+    return redirect("/register/unregistered");
+  }
+
+  // attendance.users テーブルでカードが登録されているか確認
+  const { data: attendanceUser } = await supabase
+    .schema('attendance')
+    .from('users')
+    .select('card_id')
+    .eq('supabase_auth_user_id', user.id)
+    .single();
+
+  // カードが未登録の場合は登録ページへリダイレクト
+  if (!attendanceUser) {
     return redirect("/register/unregistered");
   }
 

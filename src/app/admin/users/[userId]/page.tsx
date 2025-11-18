@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { BarChart, Calendar as CalendarIcon, Clock, Percent } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -8,44 +8,57 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge";
+} from "@/components/ui/table";
 import { format, subDays } from "date-fns";
 import { ja } from "date-fns/locale";
-import AttendanceCalendar from "./_components/AttendanceCalendar";
-import ClientRelativeTime from "./_components/ClientRelativeTime";
-import { calculateTotalActivityTime } from "../actions";
-import { convertGenerationToGrade } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { fetchMemberNickname } from "@/lib/name-api";
+import { calculateTotalActivityTime } from "@/app/actions";
+import { convertGenerationToGrade } from "@/lib/utils";
+import { Calendar as CalendarIcon, Clock, Percent, BarChart } from "lucide-react";
+import AttendanceCalendar from "@/app/dashboard/_components/AttendanceCalendar";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardPage() {
+export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
+    const resolvedParams = await params;
     const supabase = await createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    
+    // 現在のユーザーが管理者かチェック
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) {
         redirect('/login');
     }
-
+    
+    const { data: currentProfile } = await supabase
+        .schema('member')
+        .from('members')
+        .select('is_admin')
+        .eq('supabase_auth_user_id', currentUser.id)
+        .single();
+    
+    if (!currentProfile?.is_admin) {
+        redirect('/dashboard');
+    }
+    
+    // 対象ユーザーの情報を取得
     const { data: profile, error: profileError } = await supabase
         .schema('member')
         .from('members')
         .select(`
             discord_uid,
             generation,
-            is_admin,
             joined_at,
             member_team_relations(teams(name))
         `)
-        .eq('supabase_auth_user_id', user!.id)
+        .eq('supabase_auth_user_id', resolvedParams.userId)
         .single();
     
     if (profileError || !profile) {
-        console.error('Profile fetch error:', profileError);
-        console.error('User ID:', user.id);
-        redirect('/register/unregistered');
+        redirect('/admin');
     }
 
     // Discord UIDから本名を取得
@@ -62,11 +75,11 @@ export default async function DashboardPage() {
     }
 
     const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-    const userCreatedAtDate = format(new Date(profile!.joined_at), 'yyyy-MM-dd');
+    const userCreatedAtDate = format(new Date(profile.joined_at), 'yyyy-MM-dd');
 
     const [attendancesResult, totalActivityTime] = await Promise.all([
-      supabase.schema('attendance').from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5),
-      calculateTotalActivityTime(user!.id, 30)
+      supabase.schema('attendance').from('attendances').select('*').eq('user_id', resolvedParams.userId).order('timestamp', { ascending: false }).limit(10),
+      calculateTotalActivityTime(resolvedParams.userId, 30)
     ]);
     
     const { data: attendances } = attendancesResult;
@@ -75,7 +88,7 @@ export default async function DashboardPage() {
       .schema('attendance')
       .from('attendances')
       .select('date')
-      .eq('user_id', user!.id)
+      .eq('user_id', resolvedParams.userId)
       .eq('type', 'in')
       .gte('date', thirtyDaysAgo);
 
@@ -97,14 +110,18 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-start">
-            <div>
-                <h1 className="text-3xl font-bold">マイダッシュボード</h1>
-                <p className="text-muted-foreground">こんにちは, {displayName}さん！</p>
-            </div>
-            <div className="text-right">
-                {teamName && <Badge variant="secondary">{teamName}</Badge>}
-                <p className="text-sm text-muted-foreground">{profile?.generation ? convertGenerationToGrade(profile.generation) : ''}</p>
+        <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" asChild>
+                <Link href="/admin">
+                    <ArrowLeft className="h-4 w-4" />
+                </Link>
+            </Button>
+            <div className="flex-1">
+                <h1 className="text-3xl font-bold">{displayName}さんの出席詳細</h1>
+                <p className="text-muted-foreground">
+                    {teamName && <Badge variant="secondary" className="mr-2">{teamName}</Badge>}
+                    {profile?.generation && convertGenerationToGrade(profile.generation)}
+                </p>
             </div>
         </div>
       
@@ -155,8 +172,8 @@ export default async function DashboardPage() {
                 </CardContent>
             </Card>
       </div>
+      
       <div className="grid gap-6">
-        <div className="grid gap-6">
             <Card>
                 <CardHeader>
                     <CardTitle>最近の出退勤記録</CardTitle>
@@ -167,7 +184,7 @@ export default async function DashboardPage() {
                             <TableRow>
                             <TableHead>種別</TableHead>
                             <TableHead>日時</TableHead>
-                            <TableHead>相対時間</TableHead>
+                            <TableHead>カードID</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -179,7 +196,7 @@ export default async function DashboardPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
-                                    <TableCell><ClientRelativeTime date={att.timestamp} /></TableCell>
+                                    <TableCell className="font-mono text-sm">{att.card_id}</TableCell>
                                 </TableRow>
                             )) : (
                                 <TableRow>
@@ -195,11 +212,10 @@ export default async function DashboardPage() {
                 <CardTitle>出勤カレンダー</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <AttendanceCalendar userId={user!.id} />
+                    <AttendanceCalendar userId={resolvedParams.userId} />
                 </CardContent>
             </Card>
         </div>
-      </div>
     </div>
   );
 }

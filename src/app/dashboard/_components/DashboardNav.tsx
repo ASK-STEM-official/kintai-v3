@@ -5,12 +5,12 @@ import { Icons } from "@/components/icons"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ChevronRight, Users2 } from "lucide-react"
+import { ChevronRight, Users2, BarChart3 } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 
 interface TeamWithStatus {
-    id: number;
+    id: number | string;
     name: string;
     current: number;
     total: number;
@@ -18,21 +18,27 @@ interface TeamWithStatus {
 interface DashboardNavProps {
   isAdmin: boolean;
   teams: TeamWithStatus[];
-  userTeams: { team_id: number }[];
+  userTeams: { team_id: string }[];
 }
 
 export default function DashboardNav({ isAdmin, teams, userTeams }: DashboardNavProps) {
     const pathname = usePathname()
     const [isTeamsOpen, setIsTeamsOpen] = useState(pathname.startsWith('/dashboard/teams'));
     
-    const userTeamIds = userTeams.map(t => t.team_id);
-    const visibleTeams = isAdmin ? teams : teams.filter(team => userTeamIds.includes(team.id));
+    const userTeamIds = userTeams.map(t => Number(t.team_id));
+    const visibleTeams = isAdmin ? teams : teams.filter(team => userTeamIds.includes(Number(team.id)));
 
     return (
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
-              <Link href="/dashboard"><Icons.Home /> ダッシュボード</Link>
+              <Link href="/dashboard"><Icons.Home /> マイダッシュボード</Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === '/dashboard/overall'}>
+              <Link href="/dashboard/overall"><BarChart3 /> 全体ダッシュボード</Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           
@@ -50,14 +56,14 @@ export default function DashboardNav({ isAdmin, teams, userTeams }: DashboardNav
               <CollapsibleContent>
                 <SidebarMenuSub>
                   {visibleTeams.map(team => (
-                    <SidebarMenuSubItem key={team.id}>
+                    <SidebarMenuItem key={team.id}>
                       <SidebarMenuSubButton asChild isActive={pathname === `/dashboard/teams/${team.id}`}>
                         <Link href={`/dashboard/teams/${team.id}`} className="flex justify-between items-center w-full">
                           <span>{team.name}</span>
                           <Badge variant={team.current > 0 ? "default" : "secondary"} className="h-5">{team.current}/{team.total}</Badge>
                         </Link>
                       </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
+                    </SidebarMenuItem>
                   ))}
                 </SidebarMenuSub>
               </CollapsibleContent>

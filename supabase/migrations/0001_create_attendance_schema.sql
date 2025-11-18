@@ -79,4 +79,9 @@ create table attendance.daily_logout_logs (
 alter table attendance.daily_logout_logs enable row level security;
 create policy "Allow all access to service_role" on attendance.daily_logout_logs for all to service_role using (true) with check (true);
 
-    
+
+--
+-- Realtime Publication Setup
+--
+-- temp_registrations テーブルをRealtimeで監視可能にする（QRコード読み取り検知用）
+alter publication supabase_realtime add table attendance.temp_registrations;

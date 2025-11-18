@@ -256,9 +256,9 @@ export default function KioskPage() {
             />
         </div>
         <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取り登録を完了してください。</p>
-        <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg">
-            <p className="text-sm text-gray-300 font-mono truncate max-w-xs">{url}</p>
-            <Button variant="ghost" size="icon" onClick={handleCopy}>
+        <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg max-w-2xl">
+            <p className="text-sm text-gray-300 font-mono break-all">{url}</p>
+            <Button variant="ghost" size="icon" onClick={handleCopy} className="flex-shrink-0">
                 <Copy className="h-5 w-5" />
             </Button>
         </div>

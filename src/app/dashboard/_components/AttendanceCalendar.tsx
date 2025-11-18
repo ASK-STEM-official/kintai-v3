@@ -97,7 +97,7 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
         }}
       />
        <div className="mt-4 space-y-2 text-sm">
-            <p className="flex items-center gap-2"><Badge className="w-16 justify-center">出勤</Badge> 記録がある日</p>
+            <div className="flex items-center gap-2"><Badge className="w-16 justify-center">出勤</Badge> 記録がある日</div>
         </div>
     </div>
   );

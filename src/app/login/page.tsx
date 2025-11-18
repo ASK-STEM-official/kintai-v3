@@ -16,6 +16,7 @@ import { FaDiscord } from 'react-icons/fa';
 function LoginContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
+    const isNotRegistered = error === "not_registered";
     const isNotMemberError = error === "指定されたDiscordサーバーのメンバーではありません。";
 
     return (
@@ -24,7 +25,25 @@ function LoginContent() {
                 <Icons.Logo className="w-16 h-16 mx-auto text-primary mb-4" />
                 <h1 className="text-3xl font-bold text-foreground mt-4">STEM研究部勤怠管理システム</h1>
                 
-                 {isNotMemberError ? (
+                {isNotRegistered ? (
+                    <Alert className="mt-6 text-left border-orange-500/50 text-orange-700 dark:text-orange-300 [&>svg]:text-orange-700 dark:[&>svg]:text-orange-300">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle className="text-orange-800 dark:text-orange-200">メンバー登録が必要です</AlertTitle>
+                        <AlertDescription className="space-y-3">
+                            <p>このシステムを利用するには、STEM研究部のメンバー登録が必要です。</p>
+                            <p className="text-sm">下のボタンから部員登録サイトにアクセスして、メンバー登録を完了してください。</p>
+                            <Button 
+                                asChild 
+                                className="w-full mt-2 bg-orange-600 hover:bg-orange-700 text-white"
+                            >
+                                <a href="http://member.stemask.com/" target="_blank" rel="noopener noreferrer">
+                                    <LinkIcon className="w-4 h-4 mr-2" />
+                                    部員登録サイトへ
+                                </a>
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                ) : isNotMemberError ? (
                      <Alert className="mt-6 text-left border-blue-500/50 text-blue-700 dark:text-blue-300 [&>svg]:text-blue-700 dark:[&>svg]:text-blue-300">
                         <Info className="h-4 w-4" />
                         <AlertTitle className="text-blue-800 dark:text-blue-200">サーバーへの参加が必要です</AlertTitle>
