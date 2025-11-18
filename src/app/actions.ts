@@ -17,7 +17,7 @@ type Team = Tables<'member', 'teams'>;
 type UserWithTeam = Member & { teams: Team[] | null };
 
 export async function recordAttendance(cardId: string): Promise<{ success: boolean; message: string; user: { display_name: string | null; } | null; type: 'in' | 'out' | null; }> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
 
@@ -72,7 +72,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
 
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
   
   const { data: existingUser, error: existingUserError } = await supabase
@@ -110,7 +110,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
 }
 
 export async function getTempRegistration(token: string) {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .schema('attendance')
         .from('temp_registrations')
@@ -120,7 +120,7 @@ export async function getTempRegistration(token: string) {
     if (error || !data) return null;
 
     if (!data.accessed_at) {
-        const admin = createSupabaseAdminClient();
+        const admin = await createSupabaseAdminClient();
         await admin.schema('attendance').from('temp_registrations').update({ accessed_at: new Date().toISOString() }).eq('id', data.id);
     }
 
@@ -134,8 +134,8 @@ export async function completeRegistration(formData: FormData) {
     return redirect(`/register/${token}?error=Missing token`);
   }
 
-  const supabase = createSupabaseServerClient();
-  const adminSupabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseServerClient();
+  const adminSupabase = await createSupabaseAdminClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.user_metadata.provider_id) {
@@ -189,15 +189,12 @@ export async function completeRegistration(formData: FormData) {
 
 
 export async function signInWithDiscord() {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
             redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
             scopes: 'identify',
-            queryParams: {
-                prompt: 'consent',
-            },
         },
     });
 
@@ -212,8 +209,8 @@ export async function signInWithDiscord() {
 }
 
 export async function signInAsAnonymousAdmin() {
-    const adminSupabase = createSupabaseAdminClient();
-    const supabase = createSupabaseServerClient();
+    const adminSupabase = await createSupabaseAdminClient();
+    const supabase = await createSupabaseServerClient();
     const email = 'admin@example.com';
     const password = 'password';
 
@@ -284,14 +281,14 @@ export async function signInAsAnonymousAdmin() {
 
 
 export async function signOut() {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     await supabase.auth.signOut();
     revalidatePath('/', 'layout');
     return redirect('/login');
 }
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const start = startOfMonth(month);
   const end = endOfMonth(month);
 
@@ -322,7 +319,7 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
 }
 
 export async function getMonthlyAttendanceSummary(month: Date) {
-  const supabase = createSupabaseAdminClient();
+  const supabase = await createSupabaseAdminClient();
   const start = format(startOfMonth(month), 'yyyy-MM-dd');
   const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -367,7 +364,7 @@ export async function getMonthlyAttendanceSummary(month: Date) {
 
 
 export async function calculateTotalActivityTime(userId: string, days: number): Promise<number> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const startDate = subDays(new Date(), days).toISOString();
 
   const { data: attendances, error } = await supabase
@@ -401,7 +398,7 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 
 // Admin actions
 export async function getAllUsersWithStatus() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: users, error: usersError } = await supabase
         .from('users_with_latest_attendance')
         .select('*');
@@ -414,12 +411,12 @@ export async function getAllUsersWithStatus() {
 }
 
 export async function getAllTeams() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase.schema('member').from('teams').select('*').order('name');
 }
 
 export async function getTeamsWithMemberStatus() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: teams, error: teamsError } = await supabase.schema('member').from('teams').select('id, name').order('name');
     if (teamsError) return [];
 
@@ -469,7 +466,7 @@ export async function getTeamsWithMemberStatus() {
 
 
 export async function createTeam(name: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.schema('member').from('teams').insert({ name, discord_role_id: 'temp-id' }); // discord_role_id is not null
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -478,7 +475,7 @@ export async function createTeam(name: string) {
 }
 
 export async function updateTeam(id: string, name: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.schema('member').from('teams').update({ name }).eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -487,7 +484,7 @@ export async function updateTeam(id: string, name: string) {
 }
 
 export async function deleteTeam(id: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { count } = await supabase.schema('member').from('member_team_relations').select('*', { count: 'exact' }).eq('team_id', id);
 
     if (count && count > 0) {
@@ -502,7 +499,7 @@ export async function deleteTeam(id: string) {
 }
 
 export async function forceLogoutAll() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     
     const { data: currentlyIn, error: currentlyInError } = await supabase
         .rpc('get_currently_in_user_ids');
@@ -535,7 +532,7 @@ export async function forceLogoutAll() {
 }
 
 export async function forceToggleAttendance(userId: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
 
     const { data: attendanceUser, error: attUserError } = await supabase
         .schema('attendance')
@@ -575,8 +572,8 @@ export async function forceToggleAttendance(userId: string) {
 }
 
 export async function getTeamWithMembersStatus(teamId: number) {
-    const supabase = createSupabaseAdminClient();
-    const { data: { user } } = await createSupabaseServerClient().auth.getUser();
+    const supabase = await createSupabaseAdminClient();
+    const { data: { user } } = await (await createSupabaseServerClient()).auth.getUser();
     if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
     
     const { data: profile } = await supabase.schema('member').from('members').select('is_admin, member_team_relations!inner(team_id)').eq('supabase_auth_user_id', user.id).single();
@@ -620,7 +617,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
 
 
 async function getTeamStats(teamId: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const today = new Date();
 
     const { count: totalMembersCount, error: totalMembersError } = await supabase
@@ -671,7 +668,7 @@ async function getTeamStats(teamId: string) {
 
 
 export async function getMonthlyTeamAttendanceStats(teamId: string, days: number): Promise<number> {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { data: teamMembers, error: teamMembersError } = await supabase
         .schema('member')
         .from('member_team_relations')
@@ -727,7 +724,7 @@ export async function getMonthlyTeamAttendanceStats(teamId: string, days: number
 }
 
 export async function getAllDailyLogoutLogs() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('attendance')
         .from('daily_logout_logs')
@@ -736,12 +733,12 @@ export async function getAllDailyLogoutLogs() {
 }
 
 export async function getTempRegistrations() {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     return supabase.schema('attendance').from('temp_registrations').select('*').order('created_at', { ascending: false });
 }
 
 export async function deleteTempRegistration(id: string) {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.schema('attendance').from('temp_registrations').delete().eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
@@ -749,7 +746,7 @@ export async function deleteTempRegistration(id: string) {
 }
 
 export async function updateAllUserDisplayNames(): Promise<{ success: boolean, message: string, count: number }> {
-    const supabase = createSupabaseAdminClient();
+    const supabase = await createSupabaseAdminClient();
 
     const { data: users, error: usersError } = await supabase
         .schema('member')

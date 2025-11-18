@@ -3,8 +3,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { Database } from '@/lib/types'
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies()
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies()
 
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,7 +37,7 @@ export function createSupabaseServerClient() {
   )
 }
 
-export function createSupabaseAdminClient() {
+export async function createSupabaseAdminClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -45,7 +45,7 @@ export function createSupabaseAdminClient() {
         throw new Error('Supabase URL or Service Role Key is not set. Please check your .env.local file.');
     }
     
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
 
     return createServerClient<Database>(
         supabaseUrl,

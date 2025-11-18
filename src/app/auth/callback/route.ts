@@ -10,17 +10,33 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/dashboard'
 
+  console.log('[DEBUG AUTH] Callback URL:', request.url);
+  console.log('[DEBUG AUTH] Code:', code?.substring(0, 10) + '...');
+  console.log('[DEBUG AUTH] Origin:', origin);
+
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=認証コードが見つかりません。`);
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
+  
+  console.log('[DEBUG AUTH] Attempting code exchange...');
+  // PKCEフローでコードをセッションに交換
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    console.error('Supabase code exchange error:', error.message);
+    console.error('[DEBUG AUTH] Code exchange error:', error);
+    console.error('[DEBUG AUTH] Error details:', JSON.stringify(error, null, 2));
+    // PKCEエラーの場合は再ログインを促す
+    if (error.message.includes('flow state')) {
+      return NextResponse.redirect(`${origin}/login?error=セッションの有効期限が切れました。もう一度ログインしてください。`);
+    }
     return NextResponse.redirect(`${origin}/login?error=セッションの確立に失敗しました: ${error.message}`);
   }
+
+  console.log('[DEBUG AUTH] Code exchange successful!');
+  console.log('[DEBUG AUTH] User ID:', data.user?.id);
+  console.log('[DEBUG AUTH] Session expires at:', data.session?.expires_at);
 
   if (!data.session || !data.user) {
     console.error('No session or user received from Supabase after code exchange.');
