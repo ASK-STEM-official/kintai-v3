@@ -10,7 +10,7 @@ async function RegisterPageImpl({ params }: { params: { token: string } }) {
         return <RegisterPageClient token={params.token} />;
     }
 
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data: { session } } = await supabase.auth.getSession();
     
     const [tempRegResult, teamsResult] = await Promise.all([

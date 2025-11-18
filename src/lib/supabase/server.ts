@@ -3,8 +3,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { Database } from '@/lib/types'
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies()
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies()
 
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,10 +37,10 @@ export function createSupabaseServerClient() {
   )
 }
 
-export function createSupabaseAdminClient() {
+export async function createSupabaseAdminClient() {
     // The admin client is used for server-side operations that require elevated privileges.
     // It requires a cookies object even though it doesn't use it for session management.
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     return createServerClient<Database>(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,

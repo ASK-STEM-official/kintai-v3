@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=認証コードが見つかりません。`);
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {

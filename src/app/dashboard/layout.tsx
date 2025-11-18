@@ -17,7 +17,7 @@ import DashboardNav from "./_components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 async function UserProfile({ user }: { user: any }) {
-  const { data: profile } = await createSupabaseServerClient().from('users').select('display_name').eq('id', user.id).single();
+  const { data: profile } = await (await createSupabaseServerClient()).from('users').select('display_name').eq('id', user.id).single();
   const initials = profile?.display_name?.charAt(0).toUpperCase() || 'U';
   
   return (
