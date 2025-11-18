@@ -44,8 +44,9 @@ export function createSupabaseAdminClient() {
     if (!supabaseUrl || !supabaseServiceKey) {
         throw new Error('Supabase URL or Service Role Key is not set. Please check your .env.local file.');
     }
-
+    
     const cookieStore = cookies();
+
     return createServerClient<Database>(
         supabaseUrl,
         supabaseServiceKey,
