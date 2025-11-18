@@ -284,7 +284,6 @@ export async function signInAsAnonymousAdmin() {
 
 
 export async function signOut() {
-    cookies().getAll();
     const supabase = createSupabaseServerClient();
     await supabase.auth.signOut();
     revalidatePath('/', 'layout');
@@ -614,7 +613,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
         latest_timestamp: m.latest_timestamp || null,
     }));
     
-    const stats = await getTeamStats(teamId);
+    const stats = await getTeamStats(teamId as any);
 
     return { team, members: members.sort((a,b) => b.generation - a.generation || a.display_name.localeCompare(b.display_name)), stats: stats, error: null };
 }
