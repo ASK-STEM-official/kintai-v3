@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useTransition, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getDailyAttendanceCounts, getDailyAttendanceDetails } from '@/app/actions';
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { useEffect } from 'react';
-import { Users } from 'lucide-react';
+import { Users, ChevronLeft, ChevronRight, RefreshCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface DailyDetails {
     byTeam: Record<string, number>;
@@ -18,50 +18,60 @@ interface DailyDetails {
 
 export default function OverallAttendanceCalendar() {
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-    const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+    const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
     const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
     const [selectedDetails, setSelectedDetails] = useState<DailyDetails | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [isPending, startTransition] = useTransition();
 
-    // 月が変わったときにデータを取得
     useEffect(() => {
-        const fetchCounts = async () => {
+        startTransition(async () => {
             const year = currentMonth.getFullYear();
             const month = currentMonth.getMonth() + 1;
             const counts = await getDailyAttendanceCounts(year, month);
             setDailyCounts(counts);
-        };
-        fetchCounts();
+        });
     }, [currentMonth]);
 
-    // 日付が選択されたときに詳細を取得
     useEffect(() => {
-        const fetchDetails = async () => {
-            if (!selectedDate) {
-                setSelectedDetails(null);
-                return;
-            }
-            
-            setLoading(true);
+        if (!selectedDate) {
+            setSelectedDetails(null);
+            return;
+        }
+        startTransition(async () => {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const details = await getDailyAttendanceDetails(dateStr);
             setSelectedDetails(details);
-            setLoading(false);
-        };
-        fetchDetails();
+        });
     }, [selectedDate]);
-
-    const modifiers = {
-        attendance: (date: Date) => {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            return (dailyCounts[dateStr] || 0) > 0;
-        },
+    
+    const handleMonthChange = (month: Date) => {
+        setCurrentMonth(startOfMonth(month));
+        setSelectedDate(undefined);
     };
 
-    const modifiersClassNames = {
-        attendance: 'bg-primary/10 font-bold',
-    };
+    const attendedDays = useMemo(() => {
+        return Object.keys(dailyCounts)
+            .filter(dateStr => (dailyCounts[dateStr] || 0) > 0)
+            .map(dateStr => {
+                const d = new Date(dateStr);
+                const timezoneOffset = d.getTimezoneOffset() * 60000;
+                return new Date(d.getTime() + timezoneOffset);
+            });
+    }, [dailyCounts]);
 
+    const formatDay = (day: Date) => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const count = dailyCounts[dateStr];
+        return (
+            <>
+                <div>{day.getDate()}</div>
+                <div className="attendance-count">
+                    {count && count > 0 ? `${count}人` : ''}
+                </div>
+            </>
+        );
+    };
+    
     const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
     const attendanceCount = selectedDateStr ? (dailyCounts[selectedDateStr] || 0) : 0;
 
@@ -69,48 +79,49 @@ export default function OverallAttendanceCalendar() {
         <div className="space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
                 <div className="flex-1">
-                    <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={setSelectedDate}
-                        month={currentMonth}
-                        onMonthChange={setCurrentMonth}
-                        locale={ja}
-                        modifiers={modifiers}
-                        modifiersClassNames={modifiersClassNames}
-                        className="rounded-md border w-full"
-                    />
-                    <div className="mt-4 text-sm text-muted-foreground">
-                        <p className="font-semibold mb-2">凡例:</p>
-                        <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded bg-primary/10 border"></div>
-                            <span>出席記録あり</span>
-                        </div>
-                    </div>
-                    
-                    {/* 日別出席人数一覧 */}
-                    <div className="mt-4">
-                        <h4 className="font-medium text-sm mb-2">今月の出席人数</h4>
-                        <div className="grid grid-cols-7 gap-1 text-xs">
-                            {Object.entries(dailyCounts)
-                                .filter(([date]) => {
-                                    const d = new Date(date);
-                                    return d.getMonth() === currentMonth.getMonth() && 
-                                           d.getFullYear() === currentMonth.getFullYear();
-                                })
-                                .sort(([a], [b]) => a.localeCompare(b))
-                                .map(([date, count]) => (
-                                    <div 
-                                        key={date} 
-                                        className="p-1 rounded bg-muted/50 text-center cursor-pointer hover:bg-muted"
-                                        onClick={() => setSelectedDate(new Date(date))}
-                                    >
-                                        <div className="font-medium">{new Date(date).getDate()}日</div>
-                                        <div className="text-primary font-semibold">{count}人</div>
-                                    </div>
-                                ))}
-                        </div>
-                    </div>
+                    <Card>
+                        <CardHeader className="flex-row items-center justify-between pb-2">
+                             <h3 className="text-lg font-semibold">
+                                {format(currentMonth, 'yyyy年 M月', { locale: ja })}
+                            </h3>
+                            <div className='flex items-center gap-1'>
+                                <Button variant="outline" size="icon" onClick={() => handleMonthChange(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))} disabled={isPending}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" size="icon" onClick={() => handleMonthChange(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))} disabled={isPending}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" size="icon" onClick={() => handleMonthChange(new Date())} disabled={isPending}>
+                                    <RefreshCcw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                             <Calendar
+                                mode="single"
+                                selected={selectedDate}
+                                onSelect={setSelectedDate}
+                                month={currentMonth}
+                                onMonthChange={handleMonthChange}
+                                locale={ja}
+                                showOutsideDays
+                                components={{
+                                    Caption: () => null,
+                                }}
+                                modifiers={{
+                                    attended: attendedDays,
+                                }}
+                                modifiersClassNames={{
+                                    attended: 'has-attendance',
+                                }}
+                                formatters={{ formatDay }}
+                                className="p-0"
+                                classNames={{
+                                    day_selected: "bg-primary/20 text-primary-foreground font-bold border border-primary",
+                                }}
+                            />
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {selectedDate && (
@@ -127,7 +138,7 @@ export default function OverallAttendanceCalendar() {
                                     </Badge>
                                 </div>
 
-                                {loading ? (
+                                {isPending ? (
                                     <div className="text-center text-muted-foreground py-8">
                                         読み込み中...
                                     </div>
@@ -152,7 +163,6 @@ export default function OverallAttendanceCalendar() {
                                             <div className="grid grid-cols-2 gap-2">
                                                 {Object.entries(selectedDetails.byGrade)
                                                     .sort(([a], [b]) => {
-                                                        // 数字でソート（期数）
                                                         const aNum = parseInt(a.match(/\d+/)?.[0] || '0');
                                                         const bNum = parseInt(b.match(/\d+/)?.[0] || '0');
                                                         return aNum - bNum;
