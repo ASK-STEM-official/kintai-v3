@@ -93,5 +93,4 @@ export async function GET(request: Request) {
 
   console.log('[DEBUG AUTH] User found in members table, redirecting to:', next);
   return NextResponse.redirect(`${origin}${next}`);
-
-    
+}
