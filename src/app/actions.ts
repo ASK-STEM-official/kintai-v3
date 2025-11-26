@@ -276,25 +276,11 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
   const start = startOfMonth(month);
   const end = endOfMonth(month);
 
-  // 認証ユーザーIDから勤怠ユーザーIDを取得
-  const { data: attendanceUser, error: attendanceUserError } = await supabase
-    .schema('attendance')
-    .from('users')
-    .select('id')
-    .eq('supabase_auth_user_id', userId)
-    .single();
-
-  if (attendanceUserError || !attendanceUser) {
-    console.error('Error fetching attendance user:', attendanceUserError);
-    return [];
-  }
-  const internalUserId = attendanceUser.id;
-
   const { data, error } = await supabase
     .schema('attendance')
     .from('attendances')
     .select('date, type')
-    .eq('user_id', internalUserId)
+    .eq('user_id', userId)
     .gte('date', format(start, 'yyyy-MM-dd'))
     .lte('date', format(end, 'yyyy-MM-dd'))
     .order('timestamp', { ascending: true });
