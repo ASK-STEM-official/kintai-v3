@@ -276,7 +276,7 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
   const start = startOfMonth(month);
   const end = endOfMonth(month);
 
-  const { data, error } = await supabase
+  const { data: attendances, error } = await supabase
     .schema('attendance')
     .from('attendances')
     .select('date, type')
@@ -293,12 +293,18 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
   const dailyStatus: Record<string, 'in' | 'out' | 'mixed'> = {};
   data.forEach(att => {
     if (!att.date) return;
-    dailyStatus[att.date] = att.type as 'in' | 'out';
+    if (att.type === 'in') {
+        dailyStatus[att.date] = 'in'; // 一度でも 'in' があれば、その日は 'in' とする
+    } else if (!dailyStatus[att.date]) {
+        dailyStatus[att.date] = 'out';
+    }
   });
 
-  return Object.keys(dailyStatus).map(date => ({
-    date,
-    status: dailyStatus[date]
+  return Object.keys(dailyStatus)
+    .filter(date => dailyStatus[date] === 'in')
+    .map(date => ({
+        date,
+        status: 'in' as const
   }));
 }
 
@@ -804,7 +810,7 @@ export async function getTempRegistrations() {
 
 export async function deleteTempRegistration(id: string) {
     const supabase = await createSupabaseAdminClient();
-    const { error } = await supabase.schema('attendance').from('temp_registrations').delete().eq('id', id);
+    const { error } = await supabase.schema('attendance').from('temp_registregistrations').delete().eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
     return { success: true, message: '仮登録を削除しました。' };
@@ -868,21 +874,14 @@ export async function getOverallStats(days: number = 30) {
     
     // 今日の出席人数を取得
     const today = format(new Date(), 'yyyy-MM-dd');
-    const { data: todayAttendances } = await supabase
-        .schema('attendance')
-        .from('attendances')
-        .select('user_id, type')
-        .eq('date', today)
-        .order('timestamp', { ascending: false });
-    
-    // 今日出勤したユニークなユーザー（最後の記録がinの人）
-    const userLastStatus = new Map<string, string>();
-    todayAttendances?.forEach(att => {
-        if (!userLastStatus.has(att.user_id)) {
-            userLastStatus.set(att.user_id, att.type);
-        }
-    });
-    const todayActiveUsers = Array.from(userLastStatus.values()).filter(type => type === 'in').length;
+    const { data: todayAttendances, error: todayAttError } = await supabase
+      .from('attendances')
+      .select('user_id', { count: 'exact' })
+      .eq('date', today)
+      .eq('type', 'in');
+
+    if (todayAttError) console.error('Error fetching today attendees:', todayAttError);
+    const todayActiveUsers = todayAttendances ? new Set(todayAttendances.map(a => a.user_id)).size : 0;
     
     // 総登録部員数
     const { count: totalMembers } = await supabase
@@ -891,40 +890,39 @@ export async function getOverallStats(days: number = 30) {
         .select('*', { count: 'exact', head: true });
     
     // 過去N日間のユニークな出勤日数
-    const { data: distinctDates } = await supabase
-        .schema('attendance')
+    const { data: distinctDates, error: distinctDatesError } = await supabase
         .from('attendances')
         .select('date')
-        .eq('type', 'in')
         .gte('date', startDate);
     
+    if(distinctDatesError) console.error("Error fetching distinct dates", distinctDatesError);
     const activeDaysCount = distinctDates ? new Set(distinctDates.map(d => d.date)).size : 0;
     
     // 過去N日間の総活動時間（全員の合計）
-    const { data: allAttendances } = await supabase
-        .schema('attendance')
+    const { data: allAttendances, error: allAttError } = await supabase
         .from('attendances')
         .select('user_id, type, timestamp')
         .gte('date', startDate)
         .order('user_id')
         .order('timestamp', { ascending: true });
+
+    if(allAttError) console.error("Error fetching all attendances", allAttError);
     
     let totalActivityHours = 0;
     if (allAttendances) {
-        const userSessions = new Map<string, { in: Date | null }>();
+        const userSessions = new Map<string, Date | null>();
         
         for (const att of allAttendances) {
-            const session = userSessions.get(att.user_id) || { in: null };
-            
             if (att.type === 'in') {
-                session.in = new Date(att.timestamp);
-            } else if (att.type === 'out' && session.in) {
-                const duration = differenceInSeconds(new Date(att.timestamp), session.in) / 3600;
-                totalActivityHours += duration;
-                session.in = null;
+                userSessions.set(att.user_id, new Date(att.timestamp));
+            } else if (att.type === 'out') {
+                const inTime = userSessions.get(att.user_id);
+                if (inTime) {
+                    const duration = differenceInSeconds(new Date(att.timestamp), inTime) / 3600;
+                    totalActivityHours += duration;
+                    userSessions.set(att.user_id, null);
+                }
             }
-            
-            userSessions.set(att.user_id, session);
         }
     }
     
@@ -942,77 +940,61 @@ export async function getDailyAttendanceCounts(year: number, month: number) {
     const start = startOfMonth(new Date(year, month - 1));
     const end = endOfMonth(new Date(year, month - 1));
     
-    const { data: attendances } = await supabase
-        .schema('attendance')
+    const { data: attendances, error } = await supabase
         .from('attendances')
-        .select('date, user_id, type')
+        .select('date, user_id')
+        .eq('type', 'in')
         .gte('date', format(start, 'yyyy-MM-dd'))
-        .lte('date', format(end, 'yyyy-MM-dd'))
-        .order('date')
-        .order('timestamp', { ascending: false });
-    
-    const dailyCounts = new Map<string, number>();
-    
-    if (attendances) {
-        const dateUserStatus = new Map<string, Map<string, string>>();
+        .lte('date', format(end, 'yyyy-MM-dd'));
         
-        attendances.forEach(att => {
-            const key = att.date;
-            if (!dateUserStatus.has(key)) {
-                dateUserStatus.set(key, new Map());
-            }
-            const userMap = dateUserStatus.get(key)!;
-            if (!userMap.has(att.user_id)) {
-                userMap.set(att.user_id, att.type);
-            }
-        });
-        
-        dateUserStatus.forEach((userMap, date) => {
-            const count = Array.from(userMap.values()).filter(type => type === 'in').length;
-            dailyCounts.set(date, count);
-        });
+    if (error) {
+        console.error('Error fetching daily attendance counts:', error);
+        return {};
     }
     
-    return Object.fromEntries(dailyCounts);
+    const dailyCounts = new Map<string, Set<string>>();
+    
+    attendances?.forEach(att => {
+        if (!att.date) return;
+        if (!dailyCounts.has(att.date)) {
+            dailyCounts.set(att.date, new Set());
+        }
+        dailyCounts.get(att.date)!.add(att.user_id);
+    });
+    
+    const result: Record<string, number> = {};
+    dailyCounts.forEach((users, date) => {
+        result[date] = users.size;
+    });
+
+    return result;
 }
+
 
 // 特定日の詳細な出席情報を取得（班別・学年別）
 export async function getDailyAttendanceDetails(date: string) {
     const supabase = await createSupabaseAdminClient();
-    
-    const { data: attendances } = await supabase
-        .schema('attendance')
+
+    // その日に出勤したユニークなユーザーIDを取得
+    const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendances')
-        .select(`
-            user_id,
-            type,
-            timestamp
-        `)
+        .select('user_id')
         .eq('date', date)
-        .order('timestamp', { ascending: false });
-    
-    if (!attendances) {
+        .eq('type', 'in');
+
+    if (attendanceError) {
+        console.error("Error fetching daily attendance user IDs:", attendanceError);
         return { byTeam: {}, byGrade: {}, total: 0 };
     }
-    
-    // 各ユーザーの最後の状態を取得
-    const userLastStatus = new Map<string, string>();
-    attendances.forEach(att => {
-        if (!userLastStatus.has(att.user_id)) {
-            userLastStatus.set(att.user_id, att.type);
-        }
-    });
-    
-    const activeUserIds = Array.from(userLastStatus.entries())
-        .filter(([_, type]) => type === 'in')
-        .map(([userId, _]) => userId);
-    
+
+    const activeUserIds = [...new Set(attendanceData.map(a => a.user_id))];
+
     if (activeUserIds.length === 0) {
         return { byTeam: {}, byGrade: {}, total: 0 };
     }
-    
+
     // ユーザー情報を取得
-    const { data: members } = await supabase
+    const { data: members, error: membersError } = await supabase
         .schema('member')
         .from('members')
         .select(`
@@ -1023,26 +1005,33 @@ export async function getDailyAttendanceDetails(date: string) {
             )
         `)
         .in('supabase_auth_user_id', activeUserIds);
-    
+
+    if (membersError) {
+        console.error("Error fetching member details:", membersError);
+        return { byTeam: {}, byGrade: {}, total: 0 };
+    }
+
     const byTeam: Record<string, number> = {};
     const byGrade: Record<string, number> = {};
-    
+
     members?.forEach(member => {
         // 班別
+        // @ts-ignore
         const teamName = member.member_team_relations?.[0]?.teams?.name || '未所属';
         byTeam[teamName] = (byTeam[teamName] || 0) + 1;
-        
+
         // 学年別
         const grade = member.generation ? `${member.generation}期` : '不明';
         byGrade[grade] = (byGrade[grade] || 0) + 1;
     });
-    
+
     return {
         byTeam,
         byGrade,
         total: activeUserIds.length,
     };
 }
+
 
 // カードIDを変更
 export async function updateUserCardId(userId: string, newCardId: string) {
