@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server';
@@ -271,15 +272,29 @@ export async function signOut() {
 }
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await createSupabaseAdminClient();
   const start = startOfMonth(month);
   const end = endOfMonth(month);
+
+  // 認証ユーザーIDから勤怠ユーザーIDを取得
+  const { data: attendanceUser, error: attendanceUserError } = await supabase
+    .schema('attendance')
+    .from('users')
+    .select('id')
+    .eq('supabase_auth_user_id', userId)
+    .single();
+
+  if (attendanceUserError || !attendanceUser) {
+    console.error('Error fetching attendance user:', attendanceUserError);
+    return [];
+  }
+  const internalUserId = attendanceUser.id;
 
   const { data, error } = await supabase
     .schema('attendance')
     .from('attendances')
     .select('date, type')
-    .eq('user_id', userId)
+    .eq('user_id', internalUserId)
     .gte('date', format(start, 'yyyy-MM-dd'))
     .lte('date', format(end, 'yyyy-MM-dd'))
     .order('timestamp', { ascending: true });
@@ -538,7 +553,7 @@ export async function createTeam(name: string) {
     return { success: true, message: '班を作成しました。'};
 }
 
-export async function updateTeam(id: string, name: string) {
+export async function updateTeam(id: number, name: string) {
     const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.schema('member').from('teams').update({ name }).eq('id', id);
     if(error) return { success: false, message: error.message };
@@ -547,7 +562,7 @@ export async function updateTeam(id: string, name: string) {
     return { success: true, message: '班を更新しました。'};
 }
 
-export async function deleteTeam(id: string) {
+export async function deleteTeam(id: number) {
     const supabase = await createSupabaseAdminClient();
     const { count } = await supabase.schema('member').from('member_team_relations').select('*', { count: 'exact' }).eq('team_id', id);
 
