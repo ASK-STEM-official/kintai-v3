@@ -4,7 +4,7 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/sup
 import { Tables } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { randomUUID } from 'crypto';
-import { differenceInSeconds, startOfDay, endOfDay, subDays, format, startOfMonth, endOfMonth } from 'date-fns';
+import { differenceInSeconds, subDays, format, startOfMonth, endOfMonth } from 'date-fns';
 import { fetchMemberNickname } from '@/lib/name-api';
 import * as authService from '@/lib/services/auth.service';
 import * as userService from '@/lib/services/user.service';
@@ -359,7 +359,7 @@ export async function getUserMonthlyCalendar(userId: string, month: Date) {
   });
 
   return Object.entries(dailyStatus)
-    .filter(([_, info]) => info.hasIn) // Filter for days with at least one 'in'
+    .filter(([_, info]) => info.hasIn) // Filter for days with at least one 'in' record
     .map(([date, info]) => ({
       date,
       status: 'in' as const, // Always 'in' if it has an 'in' record

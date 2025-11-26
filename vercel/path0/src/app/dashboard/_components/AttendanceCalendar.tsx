@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Calendar } from '@/components/ui/calendar';
-import { getMonthlyAttendance, getUserMonthlyCalendar } from '@/app/actions-new';
+import { getUserMonthlyCalendar } from '@/app/actions-new';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
