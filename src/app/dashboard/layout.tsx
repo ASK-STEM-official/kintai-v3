@@ -164,12 +164,12 @@ export default async function DashboardLayout({
         <Sidebar className="hidden sm:flex">
             <MainSidebar user={user} isAdmin={isAdmin} />
         </Sidebar>
-        <main className="flex-1 flex flex-col sm:ml-[var(--sidebar-width)] group-[[data-state=collapsed]]/sidebar-wrapper:sm:ml-[var(--sidebar-width-icon)] transition-[margin-left] ease-in-out duration-300">
-            <MobileHeader user={user} isAdmin={isAdmin} />
-            <div className="flex-1 p-2 sm:p-4 bg-secondary/50 min-h-screen">
-                {children}
-            </div>
-        </main>
+        <div className="flex flex-1 flex-col">
+          <MobileHeader user={user} isAdmin={isAdmin} />
+          <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
+              {children}
+          </main>
+        </div>
       </div>
     </SidebarProvider>
   );
