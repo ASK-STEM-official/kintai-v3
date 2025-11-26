@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -197,7 +198,7 @@ export default function KioskPage() {
   }
   
   const IdleScreen = () => (
-    <div className="flex flex-col h-full w-full justify-between p-8">
+    <div className="flex flex-col h-full w-full justify-between p-6">
         <header className="w-full flex justify-between items-center text-xl">
             <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
             {isOnline !== undefined && (
@@ -319,8 +320,8 @@ export default function KioskPage() {
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans">
-      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
+      <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
           {renderState()}
         </div>

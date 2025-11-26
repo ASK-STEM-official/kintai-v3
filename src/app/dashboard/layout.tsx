@@ -1,3 +1,4 @@
+
 import { signOut } from "@/app/actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -164,7 +165,7 @@ export default async function DashboardLayout({
       </Sidebar>
       <div className="flex flex-col sm:pl-64">
         <MobileHeader user={user} isAdmin={isAdmin} />
-        <main className="flex-1 p-4 sm:p-6 bg-secondary/50 min-h-screen">
+        <main className="flex-1 p-2 sm:p-4 bg-secondary/50 min-h-screen">
           {children}
         </main>
       </div>
