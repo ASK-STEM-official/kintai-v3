@@ -32,7 +32,6 @@ async function UserProfile({ user }: { user: any }) {
       .single();
     
     if (!error && profile) {
-      // Discord UIDがある場合、APIから本名を取得
       if (profile.discord_uid) {
         try {
           const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
@@ -40,7 +39,6 @@ async function UserProfile({ user }: { user: any }) {
             displayName = nickname;
           }
         } catch (e) {
-          // API エラーは無視
           console.error('Failed to fetch nickname:', e);
         }
       }
@@ -128,7 +126,6 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  // member.members テーブルからプロフィールを取得
   const { data: profile, error: profileError } = await supabase
     .schema('member')
     .from('members')
@@ -139,11 +136,9 @@ export default async function DashboardLayout({
   if (profileError || !profile) {
     console.error('Profile fetch error:', profileError);
     console.error('User ID:', user.id);
-    // プロフィールが見つからない場合は登録ページへ
     return redirect("/register/unregistered");
   }
 
-  // attendance.users テーブルでカードが登録されているか確認
   const { data: attendanceUser } = await supabase
     .schema('attendance')
     .from('users')
@@ -151,7 +146,6 @@ export default async function DashboardLayout({
     .eq('supabase_auth_user_id', user.id)
     .single();
 
-  // カードが未登録の場合は登録ページへリダイレクト
   if (!attendanceUser) {
     return redirect("/register/unregistered");
   }
