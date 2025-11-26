@@ -657,7 +657,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
     const { data: team, error: teamError } = await supabase.schema('member').from('teams').select('*').eq('id', String(teamId)).single();
     if(teamError || !team) return { team: null, members: [], stats: null, error: teamError?.message };
 
-    const { data, error: membersError } = await (supabase.schema('attendance') as any)
+    const { data, error: membersError } = await (supabase.schema('member') as any)
         .from('users_with_latest_attendance_and_team')
         .select(`
             id,
@@ -810,7 +810,7 @@ export async function getTempRegistrations() {
 
 export async function deleteTempRegistration(id: string) {
     const supabase = await createSupabaseAdminClient();
-    const { error } = await supabase.schema('attendance').from('temp_registregistrations').delete().eq('id', id);
+    const { error } = await supabase.schema('attendance').from('temp_registrations').delete().eq('id', id);
     if(error) return { success: false, message: error.message };
     revalidatePath('/admin');
     return { success: true, message: '仮登録を削除しました。' };
@@ -875,6 +875,7 @@ export async function getOverallStats(days: number = 30) {
     // 今日の出席人数を取得
     const today = format(new Date(), 'yyyy-MM-dd');
     const { data: todayAttendances, error: todayAttError } = await supabase
+      .schema('attendance')
       .from('attendances')
       .select('user_id', { count: 'exact' })
       .eq('date', today)
@@ -891,6 +892,7 @@ export async function getOverallStats(days: number = 30) {
     
     // 過去N日間のユニークな出勤日数
     const { data: distinctDates, error: distinctDatesError } = await supabase
+        .schema('attendance')
         .from('attendances')
         .select('date')
         .gte('date', startDate);
@@ -900,6 +902,7 @@ export async function getOverallStats(days: number = 30) {
     
     // 過去N日間の総活動時間（全員の合計）
     const { data: allAttendances, error: allAttError } = await supabase
+        .schema('attendance')
         .from('attendances')
         .select('user_id, type, timestamp')
         .gte('date', startDate)
@@ -941,6 +944,7 @@ export async function getDailyAttendanceCounts(year: number, month: number) {
     const end = endOfMonth(new Date(year, month - 1));
     
     const { data: attendances, error } = await supabase
+        .schema('attendance')
         .from('attendances')
         .select('date, user_id')
         .eq('type', 'in')
@@ -977,6 +981,7 @@ export async function getDailyAttendanceDetails(date: string) {
 
     // その日に出勤したユニークなユーザーIDを取得
     const { data: attendanceData, error: attendanceError } = await supabase
+        .schema('attendance')
         .from('attendances')
         .select('user_id')
         .eq('date', date)
