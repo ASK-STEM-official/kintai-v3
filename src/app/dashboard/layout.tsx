@@ -72,7 +72,7 @@ async function UserProfile({ user }: { user: any }) {
   )
 }
 
-async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
   return (
     <>
       <SidebarHeader>
@@ -164,7 +164,7 @@ export default async function DashboardLayout({
         <Sidebar className="hidden sm:flex">
             <MainSidebar user={user} isAdmin={isAdmin} />
         </Sidebar>
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col transition-[margin-left] duration-200 ease-linear sm:ml-[var(--sidebar-width)] group-data-[state=collapsed]/sidebar-wrapper:sm:ml-[var(--sidebar-width-icon)]">
           <MobileHeader user={user} isAdmin={isAdmin} />
           <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
               {children}
