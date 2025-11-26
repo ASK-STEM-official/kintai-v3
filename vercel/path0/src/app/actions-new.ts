@@ -3,54 +3,89 @@
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server';
 import { Tables } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { differenceInSeconds, startOfDay, endOfDay, subDays, format, startOfMonth, endOfMonth } from 'date-fns';
 import { fetchMemberNickname } from '@/lib/name-api';
+import * as authService from '@/lib/services/auth.service';
+import * as userService from '@/lib/services/user.service';
+import * as attendanceService from '@/lib/services/attendance.service';
+import * as teamService from '@/lib/services/team.service';
+import * as registrationService from '@/lib/services/registration.service';
+import * as systemService from '@/lib/services/system.service';
+
 
 // ========================================
 // サービス層からの再エクスポート
 // ========================================
 
 // 認証関連
-export { signInWithDiscord, signOut } from '@/lib/services/auth.service';
+export async function signInWithDiscord() {
+  return authService.signInWithDiscord();
+}
+export async function signOut() {
+  return authService.signOut();
+}
 
 // ユーザー管理関連
-export { 
-  getAllUsersWithStatus,
-  updateUserDisplayName,
-  updateAllUserDisplayNames,
-  updateUserCardId
-} from '@/lib/services/user.service';
+export async function getAllUsersWithStatus() {
+  return userService.getAllUsersWithStatus();
+}
+export async function updateUserDisplayName(userId: string, displayName: string) {
+  return userService.updateUserDisplayName(userId, displayName);
+}
+export async function updateAllUserDisplayNames() {
+  return userService.updateAllUserDisplayNames();
+}
+export async function updateUserCardId(userId: string, newCardId: string) {
+    return userService.updateUserCardId(userId, newCardId);
+}
 
 // 勤怠管理関連
-export {
-  forceToggleAttendance,
-  getAllDailyLogoutLogs,
-  getMonthlyAttendanceSummary,
-  getDailyAttendanceCounts,
-  getDailyAttendanceDetails,
-  getOverallStats
-} from '@/lib/services/attendance.service';
+export async function forceToggleAttendance(userId: string) {
+  return attendanceService.forceToggleAttendance(userId);
+}
+export async function getAllDailyLogoutLogs() {
+  return attendanceService.getAllDailyLogoutLogs();
+}
+export async function getMonthlyAttendanceSummary(month: Date) {
+  return attendanceService.getMonthlyAttendanceSummary(month);
+}
+export async function getDailyAttendanceCounts(month: Date) {
+  return attendanceService.getDailyAttendanceCounts(month);
+}
+export async function getDailyAttendanceDetails(date: Date) {
+  return attendanceService.getDailyAttendanceDetails(date);
+}
+export async function getOverallStats(days?: number) {
+  return attendanceService.getOverallStats(days);
+}
 
 // チーム管理関連
-export {
-  getAllTeams,
-  getTeamsWithMemberStatus,
-  getTeamWithMembersStatus
-  // createTeam, updateTeam, deleteTeam は型定義の問題で一時的にコメントアウト
-} from '@/lib/services/team.service';
+export async function getAllTeams() {
+  return teamService.getAllTeams();
+}
+export async function getTeamsWithMemberStatus() {
+  return teamService.getTeamsWithMemberStatus();
+}
+export async function getTeamWithMembersStatus(teamId: number) {
+    return teamService.getTeamWithMembersStatus(teamId);
+}
 
 // 登録管理関連
-export {
-  getTempRegistrations,
-  getTempRegistrationByToken,
-  deleteTempRegistration
-  // completeTempRegistration は型の問題により actions.ts に実装
-} from '@/lib/services/registration.service';
+export async function getTempRegistrations() {
+  return registrationService.getTempRegistrations();
+}
+export async function getTempRegistrationByToken(token: string) {
+  return registrationService.getTempRegistrationByToken(token);
+}
+export async function deleteTempRegistration(token: string) {
+  return registrationService.deleteTempRegistration(token);
+}
 
 // システム管理関連
-export { forceLogoutAll } from '@/lib/services/system.service';
+export async function forceLogoutAll() {
+  return systemService.forceLogoutAll();
+}
 
 // ========================================
 // コアビジネスロジック（actions.tsに残す関数）
