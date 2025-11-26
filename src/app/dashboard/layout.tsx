@@ -163,7 +163,7 @@ export default async function DashboardLayout({
       <Sidebar className="hidden sm:flex">
         <MainSidebar user={user} isAdmin={isAdmin} />
       </Sidebar>
-      <div className="flex flex-col sm:pl-64">
+      <div className="flex flex-col">
         <MobileHeader user={user} isAdmin={isAdmin} />
         <main className="flex-1 p-2 sm:p-4 bg-secondary/50 min-h-screen">
           {children}
