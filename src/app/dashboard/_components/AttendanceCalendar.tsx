@@ -90,14 +90,14 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
           attended: attendedDays
         }}
         modifiersClassNames={{
-          attended: 'font-bold'
+          attended: 'is-attended'
         }}
         formatters={{
           formatDay
         }}
       />
        <div className="mt-4 space-y-2 text-sm">
-            <div className="flex items-center gap-2"><Badge className="w-16 justify-center">出勤</Badge> 記録がある日</div>
+            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-primary/20 border border-primary"></div>出勤日</div>
         </div>
     </div>
   );

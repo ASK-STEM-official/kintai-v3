@@ -77,4 +77,8 @@
   .rdp-day_outside .attendance-count {
     visibility: hidden;
   }
+
+  .is-attended {
+    @apply bg-primary/20 text-primary-foreground font-bold;
+  }
 }
