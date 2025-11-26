@@ -291,7 +291,7 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
   }
 
   const dailyStatus: Record<string, 'in' | 'out' | 'mixed'> = {};
-  data.forEach(att => {
+  attendances.forEach(att => {
     if (!att.date) return;
     if (att.type === 'in') {
         dailyStatus[att.date] = 'in'; // 一度でも 'in' があれば、その日は 'in' とする
