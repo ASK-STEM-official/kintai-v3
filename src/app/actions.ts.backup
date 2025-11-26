@@ -263,6 +263,78 @@ export async function signInWithDiscord(formData?: FormData) {
     }
 }
 
+export async function signInAsAnonymousAdmin() {
+    const adminSupabase = await createSupabaseAdminClient();
+    const supabase = await createSupabaseServerClient();
+    const email = 'admin@example.com';
+    const password = 'password';
+
+    const { data: { users }, error: listUsersError } = await adminSupabase.auth.admin.listUsers();
+    if (listUsersError) {
+        console.error('Error listing users:', listUsersError);
+        return redirect('/login?error=Failed to list users.');
+    }
+
+    let authUser = users.find(u => u.email === email);
+    let authUserId: string;
+
+    if (!authUser) {
+        const { data: newAuthUserData, error: createAuthUserError } = await adminSupabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+        });
+
+        if (createAuthUserError || !newAuthUserData.user) {
+            console.error('Error creating anonymous admin auth user:', createAuthUserError);
+            return redirect(`/login?error=${createAuthUserError?.message || 'Failed to create user'}`);
+        }
+        authUser = newAuthUserData.user;
+    }
+    
+    authUserId = authUser.id;
+
+    const { data: memberProfile } = await adminSupabase.schema('member').from('members').select('supabase_auth_user_id').eq('supabase_auth_user_id', authUserId).single();
+    if (!memberProfile) {
+        const { error: createMemberError } = await adminSupabase.schema('member').from('members').insert({
+            supabase_auth_user_id: authUserId,
+            display_name: '匿名管理者',
+            discord_uid: `anonymous_admin_${randomUUID().slice(0,8)}`,
+            generation: 0,
+            status: 2,
+            is_admin: true,
+        });
+        if (createMemberError) {
+             return redirect(`/login?error=${createMemberError.message}`);
+        }
+    }
+
+    const { data: attendanceProfile } = await adminSupabase.schema('attendance').from('users').select('supabase_auth_user_id').eq('supabase_auth_user_id', authUserId).single();
+    if (!attendanceProfile) {
+         const { error: createAttendanceUserError } = await adminSupabase.schema('attendance').from('users').insert({
+            supabase_auth_user_id: authUserId,
+            card_id: `admin_${randomUUID().slice(0,8)}`,
+        });
+        if (createAttendanceUserError) {
+            return redirect(`/login?error=${createAttendanceUserError.message}`);
+        }
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+    });
+
+    if (signInError) {
+        console.error('Sign in error:', signInError);
+        return redirect(`/login?error=${signInError.message}`);
+    }
+
+    revalidatePath('/', 'layout');
+    redirect('/dashboard');
+}
+
+
 export async function signOut() {
     const supabase = await createSupabaseServerClient();
     await supabase.auth.signOut();
@@ -815,7 +887,8 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
     const { data: users, error: usersError } = await supabase
         .schema('member')
         .from('members')
-        .select('supabase_auth_user_id, discord_uid');
+        .select('supabase_auth_user_id, discord_uid')
+        .not('discord_uid', 'like', 'anonymous_admin_%');
 
     if (usersError) {
         return { success: false, message: `ユーザーの取得に失敗しました: ${usersError.message}`, count: 0 };

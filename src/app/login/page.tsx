@@ -2,15 +2,13 @@
 'use client'
 
 import { Button } from "@/components/ui/button"
-import { signInWithDiscord, signInAsAnonymousAdmin } from "@/app/actions"
+import { signInWithDiscord } from "@/app/actions"
 import { Icons } from "@/components/icons"
 import { useSearchParams } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertTriangle, Moon, Sun, ShieldAlert, Link as LinkIcon, Info } from "lucide-react"
+import { AlertTriangle, Moon, Sun, Link as LinkIcon, Info } from "lucide-react"
 import { Suspense } from "react"
 import { useTheme } from "next-themes"
-import Link from "next/link"
-import { cn } from "@/lib/utils"
 import { FaDiscord } from 'react-icons/fa';
 
 function LoginContent() {
@@ -68,20 +66,6 @@ function LoginContent() {
                         Discordでログイン
                     </Button>
                 </form>
-                 <div className="mt-6 space-y-4">
-                    <Alert variant="destructive">
-                        <ShieldAlert className="h-4 w-4" />
-                        <AlertTitle>デモ用ログイン</AlertTitle>
-                        <AlertDescription>
-                            下のボタンは管理者権限でのデモ用ログインです。実際の運用では使用しないでください。
-                        </AlertDescription>
-                    </Alert>
-                    <form action={signInAsAnonymousAdmin}>
-                        <Button type="submit" variant="outline" className="w-full" size="lg">
-                            匿名管理者としてログイン
-                        </Button>
-                    </form>
-                 </div>
             </div>
         </div>
     )

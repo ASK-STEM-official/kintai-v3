@@ -3,10 +3,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UsersTab from "./_components/UsersTab";
 import LogsTab from "./_components/LogsTab";
-import TeamsTab from "./_components/TeamsTab";
 import SystemTab from "./_components/SystemTab";
 import { getAllUsersWithStatus, getAllTeams, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
-import { User, History, AlertCircle, Users2, Power, FilePenLine } from "lucide-react";
+import { User, History, AlertCircle, Power, FilePenLine } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import TempRegistrationsTab from "./_components/TempRegistrationsTab";
 
@@ -67,14 +66,10 @@ export default async function AdminPage() {
       )}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="users">
             <User className="mr-2 h-4 w-4" />
             ユーザー管理
-          </TabsTrigger>
-          <TabsTrigger value="teams">
-            <Users2 className="mr-2 h-4 w-4" />
-            班管理
           </TabsTrigger>
            <TabsTrigger value="temp_registrations">
             <FilePenLine className="mr-2 h-4 w-4" />
@@ -95,9 +90,6 @@ export default async function AdminPage() {
             teams={teams || []} 
             currentUser={currentUser}
           />
-        </TabsContent>
-        <TabsContent value="teams">
-          <TeamsTab teams={teams || []} />
         </TabsContent>
          <TabsContent value="temp_registrations">
             <TempRegistrationsTab tempRegistrations={tempRegistrations || []} />

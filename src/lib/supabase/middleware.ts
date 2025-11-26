@@ -55,7 +55,22 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  await supabase.auth.getUser()
+  try {
+    await supabase.auth.getUser()
+  } catch (error) {
+    // 無効なセッションエラーをキャッチ
+    console.error('Session error in middleware:', error)
+    
+    // すべてのSupabase関連Cookieをクリア
+    const cookieNames = ['sb-access-token', 'sb-refresh-token']
+    cookieNames.forEach(name => {
+      response.cookies.set({
+        name,
+        value: '',
+        maxAge: 0,
+      })
+    })
+  }
 
   return response
 }

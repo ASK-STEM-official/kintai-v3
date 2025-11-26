@@ -1,4 +1,4 @@
-import { signOut, getTeamsWithMemberStatus } from "@/app/actions";
+import { signOut } from "@/app/actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
@@ -59,7 +59,7 @@ async function UserProfile({ user }: { user: any }) {
         </Avatar>
         <div className="flex flex-col">
             <span className="font-semibold text-sm">{displayName}</span>
-            <span className="text-xs text-muted-foreground">{user.email?.includes('anonymous') ? '' : user.email}</span>
+            <span className="text-xs text-muted-foreground">{user.email}</span>
         </div>
       </div>
        <form action={signOut}>
@@ -71,9 +71,7 @@ async function UserProfile({ user }: { user: any }) {
   )
 }
 
-async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: string }[] }) {
-  const teams = await getTeamsWithMemberStatus();
-
+async function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
   return (
     <>
       <SidebarHeader>
@@ -86,7 +84,7 @@ async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: b
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
-        <DashboardNav isAdmin={isAdmin} teams={teams || []} userTeams={userTeams} />
+        <DashboardNav isAdmin={isAdmin} />
       </SidebarContent>
       <SidebarFooter>
         <UserProfile user={user} />
@@ -95,7 +93,7 @@ async function MainSidebar({ user, isAdmin, userTeams }: { user: any, isAdmin: b
   )
 }
 
-function MobileHeader({ user, isAdmin, userTeams }: { user: any, isAdmin: boolean, userTeams: { team_id: string }[] }) {
+function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
     return (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
@@ -107,7 +105,7 @@ function MobileHeader({ user, isAdmin, userTeams }: { user: any, isAdmin: boolea
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs flex flex-col p-0">
                     <SheetTitle className="sr-only">ナビゲーションメニュー</SheetTitle>
-                    <MainSidebar user={user} isAdmin={isAdmin} userTeams={userTeams} />
+                    <MainSidebar user={user} isAdmin={isAdmin} />
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
@@ -133,7 +131,7 @@ export default async function DashboardLayout({
   const { data: profile, error: profileError } = await supabase
     .schema('member')
     .from('members')
-    .select('is_admin, member_team_relations(team_id)')
+    .select('is_admin')
     .eq('supabase_auth_user_id', user.id)
     .single();
 
@@ -158,15 +156,14 @@ export default async function DashboardLayout({
   }
 
   const isAdmin = profile.is_admin;
-  const userTeams = profile.member_team_relations || [];
 
   return (
     <SidebarProvider>
       <Sidebar className="hidden sm:flex">
-        <MainSidebar user={user} isAdmin={isAdmin} userTeams={userTeams} />
+        <MainSidebar user={user} isAdmin={isAdmin} />
       </Sidebar>
       <div className="flex flex-col sm:pl-64">
-        <MobileHeader user={user} isAdmin={isAdmin} userTeams={userTeams} />
+        <MobileHeader user={user} isAdmin={isAdmin} />
         <main className="flex-1 p-4 sm:p-6 bg-secondary/50 min-h-screen">
           {children}
         </main>
