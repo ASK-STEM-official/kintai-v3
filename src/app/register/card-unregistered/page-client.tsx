@@ -11,6 +11,16 @@ import { migrateLegacyCardId, searchLegacyUsers } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface LegacyUserData {
   cardId: string;
@@ -31,6 +41,8 @@ export default function CardUnregisteredClient({ userId }: CardUnregisteredClien
   const [isSearching, setIsSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<LegacyUserData[]>([]);
+  const [selectedUser, setSelectedUser] = useState<LegacyUserData | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -74,10 +86,21 @@ export default function CardUnregisteredClient({ userId }: CardUnregisteredClien
     }
   };
 
-  const handleSelectUser = async (legacyUser: LegacyUserData) => {
+  const handleSelectUser = (user: LegacyUserData) => {
+    setSelectedUser(user);
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmMigration = async () => {
+    if (!selectedUser) return;
+    
     setIsLoading(true);
+    
     try {
-      const result = await migrateLegacyCardId(userId, undefined, undefined, legacyUser.uid);
+      // カードID引き継ぎ処理（Discord確認は省略）
+      const result = await migrateLegacyCardId(userId, undefined, undefined, selectedUser.uid);
+      
+      setShowConfirmDialog(false);
       
       if (result.success) {
         toast({
@@ -95,6 +118,7 @@ export default function CardUnregisteredClient({ userId }: CardUnregisteredClien
         });
       }
     } catch (error) {
+      setShowConfirmDialog(false);
       toast({
         title: 'エラー',
         description: '予期しないエラーが発生しました。',
@@ -231,6 +255,50 @@ export default function CardUnregisteredClient({ userId }: CardUnregisteredClien
           </div>
         </CardContent>
       </Card>
+
+      {/* 確認ダイアログ */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>カードID引き継ぎの確認</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>以下のユーザーのカードIDを引き継ぎますか?</p>
+                {selectedUser && (
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-full flex items-center justify-center bg-blue-500 text-white font-semibold shrink-0">
+                          <span className="text-sm">
+                            {selectedUser.lastname[0]}{selectedUser.firstname[0]}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-lg text-slate-900 dark:text-slate-100">
+                            {selectedUser.lastname} {selectedUser.firstname}
+                          </div>
+                          <div className="text-sm text-slate-500 dark:text-slate-400">
+                            {selectedUser.grade}期生 • 班: {selectedUser.teamId}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  この操作は取り消せません。間違いがないか確認してください。
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmMigration} disabled={isLoading}>
+              {isLoading ? '処理中...' : '引き継ぐ'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

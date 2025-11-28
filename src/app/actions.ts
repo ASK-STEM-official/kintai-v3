@@ -1189,3 +1189,41 @@ export async function searchLegacyUsers(searchTerm: string) {
         return { success: false, users: [], message: '検索に失敗しました。' };
     }
 }
+
+// Discordサーバーに所属しているか確認
+export async function checkDiscordMembership(discordUid: string) {
+    'use server';
+    
+    try {
+        const API_BASE = process.env.NEXT_PUBLIC_STEM_BOT_API_URL;
+        const API_TOKEN = process.env.STEM_BOT_API_BEARER_TOKEN;
+        
+        if (!API_BASE || !API_TOKEN) {
+            return { success: false, isInServer: false, message: 'Discord Bot APIの設定が見つかりません。' };
+        }
+        
+        const response = await fetch(`${API_BASE}/api/member/status?discord_uid=${discordUid}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${API_TOKEN}`,
+            },
+        });
+        
+        if (!response.ok) {
+            return { success: false, isInServer: false, message: 'Discord APIへの接続に失敗しました。' };
+        }
+        
+        const data = await response.json();
+        
+        return { 
+            success: true, 
+            isInServer: data.is_in_server,
+            nickname: data.current_nickname,
+            roles: data.current_roles
+        };
+    } catch (error) {
+        console.error('Discord membership check error:', error);
+        return { success: false, isInServer: false, message: 'Discordサーバーの確認に失敗しました。' };
+    }
+}
+

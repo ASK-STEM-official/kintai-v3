@@ -17,6 +17,7 @@ import { Menu } from "lucide-react";
 import DashboardNav from "./_components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { fetchMemberNickname } from "@/lib/name-api";
+import { checkDiscordMembership } from "@/app/actions";
 
 async function UserProfile({ user }: { user: any }) {
   const supabase = await createSupabaseServerClient();
@@ -129,7 +130,7 @@ export default async function DashboardLayout({
   const { data: profile, error: profileError } = await supabase
     .schema('member')
     .from('members')
-    .select('is_admin')
+    .select('is_admin, discord_uid')
     .eq('supabase_auth_user_id', user.id)
     .single();
 
@@ -138,6 +139,26 @@ export default async function DashboardLayout({
     console.error('Profile fetch error:', profileError);
     console.error('User ID:', user.id);
     return redirect("/register/member-unregistered");
+  }
+
+  // Discordサーバーに参加しているか確認
+  if (profile.discord_uid) {
+    try {
+      const discordCheck = await checkDiscordMembership(profile.discord_uid);
+      if (discordCheck.success && !discordCheck.isInServer) {
+        // Discordサーバーに未参加の場合は専用ページへリダイレクト
+        console.log('User not in Discord server, redirecting:', profile.discord_uid);
+        return redirect("/register/discord-required");
+      }
+    } catch (error) {
+      // redirectはエラーとしてthrowされるため、NEXT_REDIRECTの場合は再スロー
+      if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
+        throw error;
+      }
+      // その他のDiscord確認エラーの場合も未参加として扱う
+      console.error('Discord membership check failed:', error);
+      return redirect("/register/discord-required");
+    }
   }
 
   // カードID未登録でもダッシュボードにアクセス可能にする
