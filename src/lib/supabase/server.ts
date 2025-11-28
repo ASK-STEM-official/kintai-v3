@@ -1,5 +1,6 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '@/lib/types'
 
@@ -33,39 +34,34 @@ export async function createSupabaseServerClient() {
           }
         },
       },
+      cookieOptions: {
+        // Cookieのサイズ制限を回避するため、セッションを分割
+        maxAge: 60 * 60 * 24 * 7, // 7日間
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+      },
     }
   )
 }
 
 export async function createSupabaseAdminClient() {
-    // The admin client is used for server-side operations that require elevated privileges.
-    // It requires a cookies object even though it doesn't use it for session management.
-    const cookieStore = await cookies();
-    return createServerClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+        throw new Error('Supabase URL or Service Role Key is not set. Please check your .env.local file.');
+    }
+    
+    // Service Role Key用のクライアントはCookieを使わない
+    // これにより、service_roleとして動作し、RLSをバイパスできる
+    return createClient<Database>(
+        supabaseUrl,
+        supabaseServiceKey,
         {
-            cookies: {
-                 get(name: string) {
-                  return cookieStore.get(name)?.value
-                },
-                set(name: string, value: string, options: CookieOptions) {
-                  try {
-                    cookieStore.set({ name, value, ...options })
-                  } catch (error) {
-                  }
-                },
-                remove(name: string, options: CookieOptions) {
-                  try {
-                    cookieStore.set({ name, value: '', ...options })
-                  } catch (error) {
-                  }
-                },
-            },
             auth: {
-                autoRefreshToken: false,
                 persistSession: false,
-            },
+                autoRefreshToken: false,
+            }
         }
     );
 }

@@ -1,3 +1,4 @@
+
 export type Json =
   | string
   | number
@@ -7,51 +8,11 @@ export type Json =
   | Json[]
 
 export type Database = {
-  public: {
+  attendance: {
     Tables: {
-      announcements: {
-        Row: {
-          author_id: string | null
-          content: string
-          created_at: string
-          id: string
-          is_active: boolean
-          is_current: boolean
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          author_id?: string | null
-          content: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          is_current?: boolean
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          author_id?: string | null
-          content?: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          is_current?: boolean
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "announcements_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       attendances: {
         Row: {
+          card_id: string
           created_at: string
           date: string
           id: string
@@ -60,6 +21,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          card_id: string
           created_at?: string
           date?: string
           id?: string
@@ -68,6 +30,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          card_id?: string
           created_at?: string
           date?: string
           id?: string
@@ -81,7 +44,7 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
+            referencedColumns: ["supabase_auth_user_id"]
           },
         ]
       }
@@ -103,24 +66,6 @@ export type Database = {
           executed_at?: string
           id?: string
           status?: string
-        }
-        Relationships: []
-      }
-      teams: {
-        Row: {
-          created_at: string
-          id: number
-          name: string
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          name: string
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          name?: string
         }
         Relationships: []
       }
@@ -154,91 +99,115 @@ export type Database = {
         }
         Relationships: []
       }
-      user_edit_logs: {
-        Row: {
-          created_at: string
-          editor_user_id: string | null
-          field_name: string
-          id: string
-          new_value: string | null
-          old_value: string | null
-          target_user_id: string
-        }
-        Insert: {
-          created_at?: string
-          editor_user_id?: string | null
-          field_name: string
-          id?: string
-          new_value?: string | null
-          old_value?: string | null
-          target_user_id: string
-        }
-        Update: {
-          created_at?: string
-          editor_user_id?: string | null
-          field_name?: string
-          id?: string
-          new_value?: string | null
-          old_value?: string | null
-          target_user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_edit_logs_editor_user_id_fkey"
-            columns: ["editor_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_edit_logs_target_user_id_fkey"
-            columns: ["target_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       users: {
         Row: {
           card_id: string
           created_at: string
-          discord_id: string
-          display_name: string
-          generation: number
-          id: string
-          is_active: boolean
-          role: number
-          team_id: number | null
+          supabase_auth_user_id: string
           updated_at: string
         }
         Insert: {
           card_id: string
           created_at?: string
-          discord_id: string
-          display_name: string
-          generation: number
-          id: string
-          is_active?: boolean
-          role?: number
-          team_id?: number | null
+          supabase_auth_user_id: string
           updated_at?: string
         }
         Update: {
           card_id?: string
           created_at?: string
-          discord_id?: string
-          display_name?: string
-          generation?: number
-          id?: string
-          is_active?: boolean
-          role?: number
-          team_id?: number | null
+          supabase_auth_user_id?: string
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "users_team_id_fkey"
+            foreignKeyName: "attendance_users_supabase_auth_user_id_fkey"
+            columns: ["supabase_auth_user_id"]
+            isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["supabase_auth_user_id"]
+            referencedSchema: "member"
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      get_currently_in_user_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
+      get_latest_attendance_for_users: {
+        Args: {
+          user_ids: string[]
+        }
+        Returns: {
+          user_id: string
+          type: string
+          timestamp: string
+        }[]
+      }
+      get_monthly_attendance_summary: {
+        Args: {
+          start_date: string
+          end_date: string
+        }
+        Returns: {
+          date: string
+          team_id: string
+          team_name: string
+          generation: number
+          count: number
+        }[]
+      }
+    }
+    Enums: never
+    CompositeTypes: never
+  }
+  member: {
+    Tables: {
+      generation_roles: {
+        Row: {
+          discord_role_id: string
+          generation: number
+        }
+        Insert: {
+          discord_role_id: string
+          generation: number
+        }
+        Update: {
+          discord_role_id?: string
+          generation?: number
+        }
+        Relationships: []
+      }
+      member_team_relations: {
+        Row: {
+          created_at: string | null
+          member_id: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          member_id: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string | null
+          member_id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_team_relations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["supabase_auth_user_id"]
+          },
+          {
+            foreignKeyName: "member_team_relations_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
@@ -246,113 +215,249 @@ export type Database = {
           },
         ]
       }
-    }
-    Views: {
-      daily_team_stats: {
+      members: {
         Row: {
-          attendance_count: number | null
-          date: string | null
-          generation: number | null
-          team_id: number | null
+          avatar_url: string | null
+          deleted_at: string | null
+          discord_uid: string
+          display_name: string
+          generation: number
+          is_admin: boolean
+          joined_at: string
+          status: number
+          student_number: string | null
+          supabase_auth_user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          deleted_at?: string | null
+          discord_uid: string
+          display_name: string
+          generation: number
+          is_admin?: boolean
+          joined_at?: string
+          status: number
+          student_number?: string | null
+          supabase_auth_user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          deleted_at?: string | null
+          discord_uid?: string
+          display_name?: string
+          generation?: number
+          is_admin?: boolean
+          joined_at?: string
+          status?: number
+          student_number?: string | null
+          supabase_auth_user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "users_team_id_fkey"
-            columns: ["team_id"]
+            foreignKeyName: "fk_supabase_auth_user_id"
+            columns: ["supabase_auth_user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_leaders: {
+        Row: {
+          member_id: string
+          team_id: string
+        }
+        Insert: {
+          member_id: string
+          team_id: string
+        }
+        Update: {
+          member_id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_leaders_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["supabase_auth_user_id"]
+          },
+          {
+            foreignKeyName: "team_leaders_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          discord_role_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          discord_role_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          discord_role_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      users_with_latest_attendance: {
+        Row: {
+          card_id: string | null
+          deleted_at: string | null
+          display_name: string | null
+          generation: number | null
+          id: string | null
+          is_admin: boolean | null
+          latest_attendance_type: string | null
+          latest_timestamp: string | null
+          status: number | null
+          student_number: string | null
+          team_name: string | null
+        }
+        Insert: {
+          card_id?: string | null
+          deleted_at?: string | null
+          display_name?: string | null
+          generation?: number | null
+          id?: string | null
+          is_admin?: boolean | null
+          latest_attendance_type?: string | null
+          latest_timestamp?: string | null
+          status?: number | null
+          student_number?: string | null
+          team_name?: string | null
+        }
+        Update: {
+          card_id?: string | null
+          deleted_at?: string | null
+          display_name?: string | null
+          generation?: number | null
+          id?: string | null
+          is_admin?: boolean | null
+          latest_attendance_type?: string | null
+          latest_timestamp?: string | null
+          status?: number | null
+          student_number?: string | null
+          team_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_supabase_auth_user_id"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users_with_latest_attendance_and_team: {
+        Row: {
+          card_id: string | null
+          deleted_at: string | null
+          display_name: string | null
+          generation: number | null
+          id: string | null
+          is_admin: boolean | null
+          latest_attendance_type: string | null
+          latest_timestamp: string | null
+          status: number | null
+          student_number: string | null
+          team_id: string | null
+          team_name: string | null
+        }
+        Insert: {
+          card_id?: string | null
+          deleted_at?: string | null
+          display_name?: string | null
+          generation?: number | null
+          id?: string | null
+          is_admin?: boolean | null
+          latest_attendance_type?: string | null
+          latest_timestamp?: string | null
+          status?: number | null
+          student_number?: string | null
+          team_id?: string | null
+          team_name?: string | null
+        }
+        Update: {
+          card_id?: string | null
+          deleted_at?: string | null
+          display_name?: string | null
+          generation?: number | null
+          id?: string | null
+          is_admin?: boolean | null
+          latest_attendance_type?: string | null
+          latest_timestamp?: string | null
+          status?: number | null
+          student_number?: string | null
+          team_id?: string | null
+          team_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_supabase_auth_user_id"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
       }
     }
     Functions: {
-      is_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: never
     CompositeTypes: never
   }
 }
 
+type PublicSchema = keyof (Database)
+
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (Database["public"]["Tables"] & Database["public"]["Views"])
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
-    }
-    ? R
-    : never
-  : PublicTableNameOrOptions extends keyof (Database["public"]["Tables"] &
-        Database["public"]["Views"])
-    ? (Database["public"]["Tables"] &
-        Database["public"]["Views"])[PublicTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
+  SchemaName extends PublicSchema,
+  TableName extends keyof (Database[SchemaName]["Tables"] &
+    Database[SchemaName]["Views"])
+> = (Database[SchemaName]["Tables"] &
+  Database[SchemaName]["Views"])[TableName] extends {
+  Row: infer R
+}
+  ? R
+  : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof Database["public"]["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
-  : PublicTableNameOrOptions extends keyof Database["public"]["Tables"]
-    ? Database["public"]["Tables"][PublicTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
-    : never
+  SchemaName extends PublicSchema,
+  TableName extends keyof Database[SchemaName]["Tables"]
+> = Database[SchemaName]["Tables"][TableName] extends {
+  Insert: infer I
+}
+  ? I
+  : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof Database["public"]["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
-  : PublicTableNameOrOptions extends keyof Database["public"]["Tables"]
-    ? Database["public"]["Tables"][PublicTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
-    : never
+  SchemaName extends PublicSchema,
+  TableName extends keyof Database[SchemaName]["Tables"]
+> = Database[SchemaName]["Tables"][TableName] extends {
+  Update: infer U
+}
+  ? U
+  : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof Database["public"]["Enums"]
-    | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof Database["public"]["Enums"]
-    ? Database["public"]["Enums"][PublicEnumNameOrOptions]
-    : never
+  SchemaName extends PublicSchema,
+  EnumName extends keyof Database[SchemaName]["Enums"]
+> = Database[SchemaName]["Enums"][EnumName]
+
+    

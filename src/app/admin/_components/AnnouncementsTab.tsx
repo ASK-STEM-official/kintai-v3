@@ -1,254 +1,91 @@
-"use client";
+-- Create the attendance schema
+create schema if not exists attendance;
 
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  createAnnouncement,
-  updateAnnouncement,
-  deleteAnnouncement,
-} from "@/app/actions";
-import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-import { ja } from "date-fns/locale";
-import { Database, Tables } from "@/lib/types";
-import { PlusCircle, Edit, Trash2, Eye, EyeOff } from "lucide-react";
-import { User } from "@supabase/supabase-js";
+-- Grant usage to necessary roles
+grant usage on schema attendance to postgres, anon, authenticated, service_role;
 
-type AnnouncementWithUser = Tables<"announcements"> & {
-  users: { display_name: string | null } | null;
-};
+-- Set default grants for new tables in the attendance schema
+alter default privileges in schema attendance grant all on tables to postgres, anon, authenticated, service_role;
+alter default privileges in schema attendance grant all on functions to postgres, anon, authenticated, service_role;
+alter default privileges in schema attendance grant all on sequences to postgres, anon, authenticated, service_role;
 
-interface AnnouncementsTabProps {
-  announcements: AnnouncementWithUser[];
-  currentUser: User;
-}
+--
+-- attendance.users TABLE
+--
+create table attendance.users (
+    id uuid not null default gen_random_uuid() primary key,
+    user_id uuid not null unique references member.members(supabase_auth_user_id) on delete cascade,
+    card_id character varying not null unique,
+    created_at timestamp with time zone not null default now(),
+    updated_at timestamp with time zone not null default now()
+);
+alter table attendance.users enable row level security;
+create policy "Allow all access to service_role" on attendance.users for all to service_role using (true) with check (true);
+create policy "Allow read access to authenticated users" on attendance.users for select to authenticated using (true);
 
-export default function AnnouncementsTab({
-  announcements,
-  currentUser,
-}: AnnouncementsTabProps) {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [currentAnnouncement, setCurrentAnnouncement] =
-    useState<AnnouncementWithUser | null>(null);
 
-  const handleEdit = (announcement: AnnouncementWithUser) => {
-    setCurrentAnnouncement(announcement);
-    setDialogOpen(true);
-  };
+--
+-- attendance.attendances TABLE
+--
+create table attendance.attendances (
+    id uuid not null default gen_random_uuid() primary key,
+    user_id uuid not null references attendance.users (id) on delete cascade,
+    "type" character varying not null,
+    "timestamp" timestamp with time zone not null default now(),
+    date date not null default (now() at time zone 'utc'::text),
+    created_at timestamp with time zone not null default now()
+);
+alter table attendance.attendances enable row level security;
+create index idx_attendances_date_user on attendance.attendances using btree (date, user_id);
+create index idx_attendances_user_timestamp on attendance.attendances using btree (user_id, "timestamp");
+create policy "Allow all access to service_role" on attendance.attendances for all to service_role using (true) with check (true);
+create policy "Allow read access to user for their own records" on attendance.attendances for select to authenticated using ((select user_id from attendance.users where id = attendances.user_id) = auth.uid());
 
-  const handleNew = () => {
-    setCurrentAnnouncement(null);
-    setDialogOpen(true);
-  };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    const formData = new FormData(event.currentTarget);
-    const data = {
-      title: formData.get("title") as string,
-      content: formData.get("content") as string,
-      is_current: formData.get("is_current") === "on",
-      author_id: currentUser.id,
-    };
+--
+-- attendance.temp_registrations TABLE
+--
+create table attendance.temp_registrations (
+    id uuid not null default gen_random_uuid() primary key,
+    card_id character varying not null,
+    qr_token character varying not null,
+    expires_at timestamp with time zone not null,
+    is_used boolean not null default false,
+    accessed_at timestamp with time zone,
+    created_at timestamp with time zone not null default now()
+);
+alter table attendance.temp_registrations enable row level security;
+create unique index temp_registrations_card_id on attendance.temp_registrations using btree (card_id, is_used, expires_at);
+create unique index temp_registrations_qr_token_key on attendance.temp_registrations using btree (qr_token);
+create index idx_temp_registrations_expires on attendance.temp_registrations using btree (expires_at);
+create policy "Allow all access to service_role" on attendance.temp_registrations for all to service_role using (true) with check (true);
+create policy "Allow read access for all users" on attendance.temp_registrations for select using (true);
 
-    let result;
-    if (currentAnnouncement) {
-      result = await updateAnnouncement(currentAnnouncement.id, data);
-    } else {
-      result = await createAnnouncement(data);
-    }
 
-    if (result.success) {
-      toast({
-        title: "成功",
-        description: result.message,
-      });
-      setDialogOpen(false);
-    } else {
-      toast({
-        variant: "destructive",
-        title: "エラー",
-        description: result.message,
-      });
-    }
-    setIsSubmitting(false);
-  };
+--
+-- attendance.user_edit_logs TABLE
+--
+create table attendance.user_edit_logs (
+    id uuid not null default gen_random_uuid() primary key,
+    target_user_id uuid not null references member.members(supabase_auth_user_id) on delete cascade,
+    editor_user_id uuid references member.members(supabase_auth_user_id) on delete set null,
+    field_name character varying not null,
+    old_value text,
+    new_value text,
+    created_at timestamp with time zone not null default now()
+);
+alter table attendance.user_edit_logs enable row level security;
+create policy "Allow all access to service_role" on attendance.user_edit_logs for all to service_role using (true) with check (true);
 
-  const handleDelete = async (id: string) => {
-    if (confirm("このお知らせを削除しますか？")) {
-      const result = await deleteAnnouncement(id);
-      if (result.success) {
-        toast({
-          title: "成功",
-          description: result.message,
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "エラー",
-          description: result.message,
-        });
-      }
-    }
-  };
-  
-  const handleToggleCurrent = async (announcement: AnnouncementWithUser) => {
-    const result = await updateAnnouncement(announcement.id, { is_current: !announcement.is_current });
-     if (result.success) {
-        toast({ title: "成功", description: result.message });
-      } else {
-        toast({ variant: "destructive", title: "エラー", description: result.message });
-      }
-  }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>お知らせ管理</CardTitle>
-        <CardDescription>
-          Kiosk画面に表示するお知らせを作成、編集、削除します。
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="text-right mb-4">
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={handleNew}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                新規作成
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleSubmit}>
-                <DialogHeader>
-                  <DialogTitle>
-                    {currentAnnouncement ? "お知らせの編集" : "お知らせの新規作成"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div>
-                    <Label htmlFor="title">タイトル</Label>
-                    <Input
-                      id="title"
-                      name="title"
-                      defaultValue={currentAnnouncement?.title}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="content">内容</Label>
-                    <Textarea
-                      id="content"
-                      name="content"
-                      defaultValue={currentAnnouncement?.content}
-                      required
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="is_current"
-                      name="is_current"
-                      defaultChecked={currentAnnouncement?.is_current}
-                    />
-                    <Label htmlFor="is_current">Kioskに表示する</Label>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <DialogClose asChild>
-                     <Button variant="outline" type="button">キャンセル</Button>
-                  </DialogClose>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "保存中..." : "保存"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>タイトル</TableHead>
-              <TableHead>作成者</TableHead>
-              <TableHead>作成日時</TableHead>
-              <TableHead>状態</TableHead>
-              <TableHead>アクション</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {announcements.filter(a => a.is_active).map((announcement) => (
-              <TableRow key={announcement.id}>
-                <TableCell className="font-medium">{announcement.title}</TableCell>
-                <TableCell>{announcement.users?.display_name}</TableCell>
-                <TableCell>
-                  {format(new Date(announcement.created_at), "yyyy/MM/dd HH:mm", {
-                    locale: ja,
-                  })}
-                </TableCell>
-                <TableCell>
-                  {announcement.is_current ? (
-                    <Badge>表示中</Badge>
-                  ) : (
-                    <Badge variant="secondary">非表示</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="space-x-2">
-                  <Button variant="outline" size="icon" onClick={() => handleToggleCurrent(announcement)}>
-                    {announcement.is_current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleEdit(announcement)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    onClick={() => handleDelete(announcement.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
+--
+-- attendance.daily_logout_logs TABLE
+--
+create table attendance.daily_logout_logs (
+    id uuid not null default gen_random_uuid() primary key,
+    executed_at timestamp with time zone not null default now(),
+    affected_count integer not null,
+    status character varying not null
+);
+alter table attendance.daily_logout_logs enable row level security;
+create policy "Allow all access to service_role" on attendance.daily_logout_logs for all to service_role using (true) with check (true);

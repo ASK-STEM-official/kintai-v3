@@ -13,7 +13,6 @@ import { useToast } from '@/hooks/use-toast';
 
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
 type AttendanceType = 'in' | 'out' | null;
-type Announcement = Database['public']['Tables']['announcements']['Row'] | null;
 
 const AUTO_RESET_DELAY = 5000;
 
@@ -24,7 +23,6 @@ export default function KioskPage() {
   const [inputValue, setInputValue] = useState('');
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpiry, setQrExpiry] = useState<number>(0);
-  const [announcement, setAnnouncement] = useState<Announcement>(null);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
   const { toast } = useToast();
@@ -35,13 +33,8 @@ export default function KioskPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
-    const fetchData = async () => {
-        const { data: initialAnnouncement } = await supabase.from('announcements').select('*').eq('is_current', true).limit(1).maybeSingle();
-        setAnnouncement(initialAnnouncement);
-        setKioskState('idle');
-    };
-    fetchData();
-  }, [supabase]);
+    setKioskState('idle');
+  }, []);
 
 
   const resetToIdle = useCallback(() => {
@@ -162,7 +155,7 @@ export default function KioskPage() {
           'postgres_changes',
           { 
             event: 'UPDATE', 
-            schema: 'public', 
+            schema: 'attendance', 
             table: 'temp_registrations', 
             filter: `qr_token=eq.${qrToken}`
           },
@@ -175,22 +168,10 @@ export default function KioskPage() {
         ).subscribe();
     }
     
-    const announcementChannel = supabase
-      .channel('kiosk-announcement-channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'announcements' },
-        async () => {
-          const { data } = await supabase.from('announcements').select('*').eq('is_current', true).limit(1).maybeSingle();
-          setAnnouncement(data);
-        }
-      ).subscribe();
-
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
       if (qrChannel) supabase.removeChannel(qrChannel);
-      if (announcementChannel) supabase.removeChannel(announcementChannel);
     };
   }, [supabase, qrToken, kioskState, resetToIdle]);
   
@@ -217,7 +198,7 @@ export default function KioskPage() {
   }
   
   const IdleScreen = () => (
-    <div className="flex flex-col h-full w-full justify-between p-8">
+    <div className="flex flex-col h-full w-full justify-between p-6">
         <header className="w-full flex justify-between items-center text-xl">
             <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
             {isOnline !== undefined && (
@@ -229,15 +210,6 @@ export default function KioskPage() {
         </header>
 
         <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4">
-            {announcement && announcement.is_active && (
-                <div className="w-full max-w-4xl p-6 bg-blue-500/10 border border-blue-400/30 rounded-lg text-center mb-8">
-                <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-3">
-                    <Bell className="text-blue-300" />
-                    {announcement.title}
-                </h2>
-                <p className="text-lg text-gray-300 whitespace-pre-wrap">{announcement.content}</p>
-                </div>
-            )}
             <Clock />
         </div>
         
@@ -285,9 +257,9 @@ export default function KioskPage() {
             />
         </div>
         <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取り登録を完了してください。</p>
-        <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg">
-            <p className="text-sm text-gray-300 font-mono truncate max-w-xs">{url}</p>
-            <Button variant="ghost" size="icon" onClick={handleCopy}>
+        <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg max-w-2xl">
+            <p className="text-sm text-gray-300 font-mono break-all">{url}</p>
+            <Button variant="ghost" size="icon" onClick={handleCopy} className="flex-shrink-0">
                 <Copy className="h-5 w-5" />
             </Button>
         </div>
@@ -348,8 +320,8 @@ export default function KioskPage() {
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans">
-      <div className="w-[1024px] h-[768px] bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
+      <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
           {renderState()}
         </div>
@@ -366,5 +338,3 @@ export default function KioskPage() {
     </div>
   );
 }
-
-    

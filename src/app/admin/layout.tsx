@@ -14,8 +14,8 @@ export default async function AdminLayout({
     return redirect("/login");
   }
 
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
-  const isAdmin = profile?.role === 1;
+  const { data: profile } = await supabase.schema('member').from('members').select('is_admin').eq('supabase_auth_user_id', user.id).single();
+  const isAdmin = profile?.is_admin === true;
 
   if (!isAdmin) {
     return redirect("/dashboard");
