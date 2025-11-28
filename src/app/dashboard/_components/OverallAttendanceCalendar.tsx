@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 interface DailyDetails {
     byTeam: Record<string, number>;
     byGrade: Record<string, number>;
+    byTeamAndGrade: Record<string, Record<string, number>>;
     total: number;
 }
 
@@ -145,34 +146,35 @@ export default function OverallAttendanceCalendar() {
                                 ) : selectedDetails && selectedDetails.total > 0 ? (
                                     <div className="space-y-4">
                                         <div>
-                                            <h4 className="font-medium text-sm text-muted-foreground mb-2">班別出席人数</h4>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {Object.entries(selectedDetails.byTeam)
+                                            <h4 className="font-medium text-sm text-muted-foreground mb-3">班別出席人数</h4>
+                                            <div className="space-y-3">
+                                                {Object.entries(selectedDetails.byTeamAndGrade)
                                                     .sort(([a], [b]) => a.localeCompare(b))
-                                                    .map(([team, count]) => (
-                                                        <div key={team} className="flex justify-between items-center p-2 rounded bg-muted/50">
-                                                            <span className="text-sm font-medium">{team}</span>
-                                                            <Badge variant="outline">{count}人</Badge>
-                                                        </div>
-                                                    ))}
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="font-medium text-sm text-muted-foreground mb-2">学年別出席人数</h4>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {Object.entries(selectedDetails.byGrade)
-                                                    .sort(([a], [b]) => {
-                                                        const aNum = parseInt(a.match(/\d+/)?.[0] || '0');
-                                                        const bNum = parseInt(b.match(/\d+/)?.[0] || '0');
-                                                        return aNum - bNum;
-                                                    })
-                                                    .map(([grade, count]) => (
-                                                        <div key={grade} className="flex justify-between items-center p-2 rounded bg-muted/50">
-                                                            <span className="text-sm font-medium">{grade}</span>
-                                                            <Badge variant="outline">{count}人</Badge>
-                                                        </div>
-                                                    ))}
+                                                    .map(([team, gradeData]) => {
+                                                        const teamTotal = selectedDetails.byTeam[team] || 0;
+                                                        return (
+                                                            <div key={team} className="space-y-2">
+                                                                <div className="flex justify-between items-center p-2 rounded-md bg-primary/10 border border-primary/20">
+                                                                    <span className="font-semibold text-sm">{team}</span>
+                                                                    <Badge variant="default">{teamTotal}人</Badge>
+                                                                </div>
+                                                                <div className="ml-4 grid grid-cols-2 gap-2">
+                                                                    {Object.entries(gradeData)
+                                                                        .sort(([a], [b]) => {
+                                                                            const aNum = parseInt(a.match(/\d+/)?.[0] || '0');
+                                                                            const bNum = parseInt(b.match(/\d+/)?.[0] || '0');
+                                                                            return aNum - bNum;
+                                                                        })
+                                                                        .map(([grade, count]) => (
+                                                                            <div key={grade} className="flex justify-between items-center px-2 py-1 rounded bg-muted/50 text-xs">
+                                                                                <span className="text-muted-foreground">{grade}</span>
+                                                                                <span className="font-medium">{count}人</span>
+                                                                            </div>
+                                                                        ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                             </div>
                                         </div>
                                     </div>

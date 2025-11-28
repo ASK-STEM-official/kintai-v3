@@ -989,13 +989,13 @@ export async function getDailyAttendanceDetails(date: string) {
 
     if (attendanceError) {
         console.error("Error fetching daily attendance user IDs:", attendanceError);
-        return { byTeam: {}, byGrade: {}, total: 0 };
+        return { byTeam: {}, byGrade: {}, byTeamAndGrade: {}, total: 0 };
     }
 
     const activeUserIds = [...new Set(attendanceData.map(a => a.user_id))];
 
     if (activeUserIds.length === 0) {
-        return { byTeam: {}, byGrade: {}, total: 0 };
+        return { byTeam: {}, byGrade: {}, byTeamAndGrade: {}, total: 0 };
     }
 
     // ユーザー情報を取得
@@ -1006,6 +1006,7 @@ export async function getDailyAttendanceDetails(date: string) {
             supabase_auth_user_id,
             generation,
             member_team_relations(
+                team_id,
                 teams(name)
             )
         `)
@@ -1013,26 +1014,42 @@ export async function getDailyAttendanceDetails(date: string) {
 
     if (membersError) {
         console.error("Error fetching member details:", membersError);
-        return { byTeam: {}, byGrade: {}, total: 0 };
+        return { byTeam: {}, byGrade: {}, byTeamAndGrade: {}, total: 0 };
     }
 
     const byTeam: Record<string, number> = {};
     const byGrade: Record<string, number> = {};
+    const byTeamAndGrade: Record<string, Record<string, number>> = {};
 
     members?.forEach(member => {
-        // 班別
+        // 複数班に所属している場合、team_idが最小のものを優先
         // @ts-ignore
-        const teamName = member.member_team_relations?.[0]?.teams?.name || '未所属';
+        const teamRelations = member.member_team_relations || [];
+        
+        // team_idでソートして最初のものを選択
+        const primaryTeamRelation = teamRelations.sort((a: any, b: any) => {
+            return (a.team_id || '').localeCompare(b.team_id || '');
+        })[0];
+        
+        // @ts-ignore
+        const teamName = primaryTeamRelation?.teams?.name || '未所属';
         byTeam[teamName] = (byTeam[teamName] || 0) + 1;
 
         // 学年別
         const grade = member.generation ? `${member.generation}期` : '不明';
         byGrade[grade] = (byGrade[grade] || 0) + 1;
+
+        // 班別×学年別
+        if (!byTeamAndGrade[teamName]) {
+            byTeamAndGrade[teamName] = {};
+        }
+        byTeamAndGrade[teamName][grade] = (byTeamAndGrade[teamName][grade] || 0) + 1;
     });
 
     return {
         byTeam,
         byGrade,
+        byTeamAndGrade,
         total: activeUserIds.length,
     };
 }

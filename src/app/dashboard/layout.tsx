@@ -154,11 +154,11 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="group/sidebar-wrapper">
+      <div className="flex min-h-screen w-full">
         <Sidebar className="hidden sm:flex">
             <MainSidebar user={user} isAdmin={isAdmin} />
         </Sidebar>
-        <div className="flex flex-1 flex-col transition-[margin-left] duration-200 ease-linear sm:ml-[var(--sidebar-width)] group-data-[state=collapsed]/sidebar-wrapper:sm:ml-[var(--sidebar-width-icon)]">
+        <div className="flex flex-1 flex-col">
           <MobileHeader user={user} isAdmin={isAdmin} />
           <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
               {children}
