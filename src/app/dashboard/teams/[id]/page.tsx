@@ -2,10 +2,10 @@ import { getTeamWithMembersStatus } from "@/app/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock, Lock } from "lucide-react";
 import Link from "next/link";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ClientRelativeTime from "../../_components/ClientRelativeTime";
 import { convertGenerationToGrade } from "@/lib/utils";
 
@@ -34,7 +34,7 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>エラー</AlertTitle>
                 <AlertDescription>
-                    指定された班が見つかりません。
+                    {error || '指定された班が見つかりません。'}
                      <Button variant="link" asChild><Link href="/dashboard">ダッシュボードに戻る</Link></Button>
                 </AlertDescription>
             </Alert>
@@ -109,13 +109,13 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                                         <p className="text-sm text-muted-foreground">{convertGenerationToGrade(member.generation)}</p>
                                     </div>
                                 </div>
-                                {member.status === 'in' ? (
+                                {member.latest_attendance_type === 'in' ? (
                                     <Badge>
                                         出勤中
-                                        {member.timestamp && (
+                                        {member.latest_timestamp && (
                                             <span className="ml-2 flex items-center gap-1">
                                                 <Clock className="h-3 w-3"/>
-                                                <ClientRelativeTime date={member.timestamp} />
+                                                <ClientRelativeTime date={member.latest_timestamp} />
                                             </span>
                                         )}
                                     </Badge>
@@ -128,7 +128,5 @@ export default async function TeamStatusPage({ params }: { params: { id: string 
                 </CardContent>
             </Card>
         </div>
-    )
+    );
 }
-
-    

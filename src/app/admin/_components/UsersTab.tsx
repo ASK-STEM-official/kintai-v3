@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
@@ -12,40 +13,70 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { ArrowUpDown, Search, RefreshCw, Edit, Eye, Filter } from "lucide-react"
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import { forceToggleAttendance, updateAllUserDisplayNames, updateUserCardId } from '@/app/actions';
+import { Tables } from '@/lib/types';
+import { User } from '@supabase/supabase-js';
+import { convertGenerationToGrade } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogClose,
+  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Edit, ArrowUpDown, Search } from "lucide-react"
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { useToast } from '@/hooks/use-toast';
-import { updateUser, logUserEdit, forceToggleAttendance } from '@/app/actions';
-import { Tables } from '@/lib/types';
-import { User } from '@supabase/supabase-js';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { convertGenerationToGrade } from '@/lib/utils';
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import Link from "next/link";
 
-type UserWithTeamAndStatus = Tables<'users'> & {
-    teams: { id: number, name: string } | null;
-    status: 'in' | 'out';
+type UserWithDetails = {
+    id: string;
+    display_name: string;
+    card_id: string | null;
+    team_name: string | null;
+    team_id: string | null;
+    generation: number;
+    is_admin: boolean;
+    latest_attendance_type: string | null;
+    latest_timestamp: string | null;
+    deleted_at: string | null;
+    student_number: string | null;
+    status: number;
 };
 
-type SortKey = keyof UserWithTeamAndStatus | 'teams.name';
+type SortKey = keyof UserWithDetails;
 type SortDirection = 'asc' | 'desc';
 
 interface UsersTabProps {
-    users: UserWithTeamAndStatus[];
-    teams: Tables<'teams'>[];
+    users: UserWithDetails[];
+    teams: Tables<'member', 'teams'>[];
     currentUser: User;
 }
+
+type AttendanceStatus = 'not_clocked_in' | 'clocked_in' | 'clocked_out' | 'all';
+type UserStatus = 0 | 1 | 2 | null; // 0: 中学生, 1: 高校生, 2: OB/OG
 
 const SortableHeader = ({
   children,
@@ -77,32 +108,107 @@ const SortableHeader = ({
 };
 
 
-export default function UsersTab({ users: initialUsers, teams, currentUser }: UsersTabProps) {
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const { toast } = useToast();
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<UserWithTeamAndStatus | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'display_name', direction: 'asc' });
-    const [users, setUsers] = useState(initialUsers);
-    const [isToggling, startToggleTransition] = useTransition();
-
-    const handleEdit = (user: UserWithTeamAndStatus) => {
-        setEditingUser(user);
-        setDialogOpen(true);
+// ユーザーの現在の出勤状態を判定する関数
+const getAttendanceStatus = (latestType: string | null, latestTimestamp: string | null): AttendanceStatus => {
+    if (!latestTimestamp) return 'not_clocked_in';
+    
+    const now = new Date();
+    const latest = new Date(latestTimestamp);
+    const todayMidnight = new Date(now);
+    todayMidnight.setHours(0, 0, 0, 0);
+    
+    // 最後の記録が今日の0:00より前の場合、まだ出勤していない
+    if (latest < todayMidnight) {
+        return 'not_clocked_in';
     }
     
+    // 今日の記録がある場合
+    if (latestType === 'in') {
+        return 'clocked_in'; // 出勤中
+    } else {
+        return 'clocked_out'; // 退勤済み
+    }
+};
+
+const getStatusLabel = (status: number): string => {
+    switch (status) {
+        case 0: return '中学生';
+        case 1: return '高校生';
+        case 2: return 'OB/OG';
+        default: return '不明';
+    }
+};
+
+const getAttendanceStatusLabel = (status: AttendanceStatus): string => {
+    switch (status) {
+        case 'not_clocked_in': return '未出勤';
+        case 'clocked_in': return '出勤中';
+        case 'clocked_out': return '退勤済み';
+        default: return '全て';
+    }
+};
+
+const getAttendanceStatusBadgeVariant = (status: AttendanceStatus): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+        case 'not_clocked_in': return 'outline';
+        case 'clocked_in': return 'default';
+        case 'clocked_out': return 'secondary';
+        default: return 'outline';
+    }
+};
+
+export default function UsersTab({ users: initialUsers, teams, currentUser }: UsersTabProps) {
+    const { toast } = useToast();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'display_name', direction: 'asc' });
+    const [isToggling, startToggleTransition] = useTransition();
+    const [isUpdatingNames, startUpdatingNamesTransition] = useTransition();
+    const [isUpdatingCardId, startUpdatingCardIdTransition] = useTransition();
+    const [editingUser, setEditingUser] = useState<{ id: string; currentCardId: string } | null>(null);
+    const [newCardId, setNewCardId] = useState('');
+    
+    // フィルター状態
+    const [filterStatus, setFilterStatus] = useState<UserStatus | 'all'>('all'); // 中学生/高校生/OB/OG
+    const [filterAttendance, setFilterAttendance] = useState<AttendanceStatus>('all'); // 出勤状態
+    const [filterHasCardId, setFilterHasCardId] = useState<boolean | 'all'>('all'); // カードID有無
+    const [showFilters, setShowFilters] = useState(false);
+
     const handleForceToggle = (userId: string) => {
         startToggleTransition(async () => {
             const result = await forceToggleAttendance(userId);
             if (result.success) {
                 toast({ title: "成功", description: result.message });
-                setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, status: u.status === 'in' ? 'out' : 'in' } : u));
             } else {
                 toast({ variant: "destructive", title: "エラー", description: result.message });
             }
         });
     }
+
+    const handleUpdateAllNames = () => {
+        startUpdatingNamesTransition(async () => {
+            const result = await updateAllUserDisplayNames();
+            toast({
+                title: result.success ? "成功" : "エラー",
+                description: result.message,
+                variant: result.success ? "default" : "destructive",
+            });
+        });
+    };
+
+    const handleUpdateCardId = (userId: string) => {
+        startUpdatingCardIdTransition(async () => {
+            const result = await updateUserCardId(userId, newCardId);
+            toast({
+                title: result.success ? "成功" : "エラー",
+                description: result.message,
+                variant: result.success ? "default" : "destructive",
+            });
+            if (result.success) {
+                setEditingUser(null);
+                setNewCardId('');
+            }
+        });
+    };
 
     const handleSort = (key: SortKey) => {
         setSort(prevSort => ({
@@ -112,22 +218,36 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     };
 
     const sortedAndFilteredUsers = useMemo(() => {
-        let filtered = users.filter(user =>
-            user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.card_id.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        let filtered = initialUsers.filter(user => {
+            // テキスト検索
+            const matchesSearch = user.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (user.card_id && user.card_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (user.student_number && user.student_number.toLowerCase().includes(searchTerm.toLowerCase()));
+            
+            if (!matchesSearch) return false;
+            
+            // ステータスフィルター (中学生/高校生/OB/OG)
+            if (filterStatus !== 'all' && user.status !== filterStatus) return false;
+            
+            // 出勤状態フィルター
+            if (filterAttendance !== 'all') {
+                const attendanceStatus = getAttendanceStatus(user.latest_attendance_type, user.latest_timestamp);
+                if (attendanceStatus !== filterAttendance) return false;
+            }
+            
+            // カードID有無フィルター
+            if (filterHasCardId !== 'all') {
+                const hasCardId = !!user.card_id;
+                if (hasCardId !== filterHasCardId) return false;
+            }
+            
+            return true;
+        });
 
         filtered.sort((a, b) => {
             const key = sort.key;
-            let valA: any, valB: any;
-
-            if (key === 'teams.name') {
-                valA = a.teams?.name || '';
-                valB = b.teams?.name || '';
-            } else {
-                valA = a[key as keyof UserWithTeamAndStatus];
-                valB = b[key as keyof UserWithTeamAndStatus];
-            }
+            let valA: any = a[key as keyof UserWithDetails];
+            let valB: any = b[key as keyof UserWithDetails];
             
             if (typeof valA === 'string' && typeof valB === 'string') {
                 valA = valA.toLowerCase();
@@ -140,188 +260,214 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
         });
         
         return filtered;
-    }, [users, searchTerm, sort]);
-
-
-    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (!editingUser) return;
-        
-        setIsSubmitting(true);
-        const formData = new FormData(event.currentTarget);
-        
-        const updatedData = {
-            display_name: formData.get('display_name') as string,
-            generation: Number(formData.get('generation')),
-            team_id: Number(formData.get('team_id')),
-            role: Number(formData.get('role')),
-            is_active: formData.get('is_active') === 'on',
-            card_id: formData.get('card_id') as string,
-        };
-
-        const result = await updateUser(editingUser.id, updatedData);
-
-        if (result.success) {
-            toast({ title: "成功", description: result.message });
-            
-            const changedFields = Object.keys(updatedData).filter(key => {
-                const fieldKey = key as keyof typeof updatedData;
-                return String(updatedData[fieldKey]) !== String(editingUser[fieldKey as keyof UserWithTeamAndStatus]);
-            });
-
-            for (const fieldName of changedFields) {
-                const key = fieldName as keyof typeof updatedData;
-                 await logUserEdit({
-                    target_user_id: editingUser.id,
-                    editor_user_id: currentUser.id,
-                    field_name: key,
-                    old_value: String(editingUser[key as keyof UserWithTeamAndStatus]),
-                    new_value: String(updatedData[key]),
-                });
-            }
-
-            setDialogOpen(false);
-        } else {
-            toast({ variant: "destructive", title: "エラー", description: result.message });
-        }
-        setIsSubmitting(false);
-    }
+    }, [initialUsers, searchTerm, sort, filterStatus, filterAttendance, filterHasCardId]);
 
   return (
      <Card>
             <CardHeader>
                 <CardTitle>ユーザー管理</CardTitle>
                 <CardDescription>
-                    ユーザー情報の表示と編集、および手動での出退勤操作を行います。
+                    ユーザー情報の表示と、手動での出退勤操作を行います。({sortedAndFilteredUsers.length}名表示中 / 全{initialUsers.length}名)
                 </CardDescription>
             </CardHeader>
             <CardContent>
-            <div className="mb-4">
-                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="表示名またはカードIDで検索..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9"
-                    />
+            <div className="mb-4 space-y-4">
+                <div className="flex items-center gap-4">
+                    <div className="relative flex-grow">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="表示名、カードID、学籍番号で検索..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-9"
+                        />
+                    </div>
+                    <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
+                        <Filter className="mr-2 h-4 w-4" />
+                        {showFilters ? 'フィルターを隠す' : 'フィルター'}
+                    </Button>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="outline">
+                                <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingNames ? 'animate-spin' : ''}`} />
+                                表示名を更新
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>全ユーザーの表示名を更新しますか？</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Discordサーバーのニックネーム（本名）をAPI経由で取得し、このシステムの全ユーザーの表示名を上書きします。この操作は時間がかかる場合があります。
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleUpdateAllNames} disabled={isUpdatingNames}>
+                                {isUpdatingNames ? '更新中...' : '実行する'}
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 </div>
+                
+                {showFilters && (
+                    <Card className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label>ステータス</Label>
+                                <Select value={filterStatus === 'all' ? 'all' : String(filterStatus)} onValueChange={(val) => setFilterStatus(val === 'all' ? 'all' : Number(val) as UserStatus)}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">全て</SelectItem>
+                                        <SelectItem value="0">中学生</SelectItem>
+                                        <SelectItem value="1">高校生</SelectItem>
+                                        <SelectItem value="2">OB/OG</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label>出勤状態</Label>
+                                <Select value={filterAttendance} onValueChange={(val) => setFilterAttendance(val as AttendanceStatus)}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">全て</SelectItem>
+                                        <SelectItem value="not_clocked_in">未出勤</SelectItem>
+                                        <SelectItem value="clocked_in">出勤中</SelectItem>
+                                        <SelectItem value="clocked_out">退勤済み</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label>カードID</Label>
+                                <Select value={filterHasCardId === 'all' ? 'all' : String(filterHasCardId)} onValueChange={(val) => setFilterHasCardId(val === 'all' ? 'all' : val === 'true')}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">全て</SelectItem>
+                                        <SelectItem value="true">登録済み</SelectItem>
+                                        <SelectItem value="false">未登録</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-4 flex justify-end">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                                setFilterStatus('all');
+                                setFilterAttendance('all');
+                                setFilterHasCardId('all');
+                            }}>
+                                フィルターをクリア
+                            </Button>
+                        </div>
+                    </Card>
+                )}
             </div>
             <Table>
                 <TableHeader>
                     <TableRow>
                         <SortableHeader sortKey="display_name" currentSort={sort} onSort={handleSort}>表示名</SortableHeader>
-                        <SortableHeader sortKey="teams.name" currentSort={sort} onSort={handleSort}>班</SortableHeader>
-                         <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>学年/期生</SortableHeader>
-                        <SortableHeader sortKey="role" currentSort={sort} onSort={handleSort}>役割</SortableHeader>
-                        <SortableHeader sortKey="status" currentSort={sort} onSort={handleSort}>現在の状態</SortableHeader>
+                        <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>学年/期生</SortableHeader>
+                        <SortableHeader sortKey="status" currentSort={sort} onSort={handleSort}>ステータス</SortableHeader>
+                        <SortableHeader sortKey="latest_attendance_type" currentSort={sort} onSort={handleSort}>出勤状態</SortableHeader>
                         <SortableHeader sortKey="card_id" currentSort={sort} onSort={handleSort}>カードID</SortableHeader>
-                        <SortableHeader sortKey="is_active" currentSort={sort} onSort={handleSort}>アカウント</SortableHeader>
                         <TableHead>アクション</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {sortedAndFilteredUsers?.map(user => (
-                        <TableRow key={user.id} data-state={!user.is_active ? "disabled" : ""}>
+                    {sortedAndFilteredUsers?.map(user => {
+                        const attendanceStatus = getAttendanceStatus(user.latest_attendance_type, user.latest_timestamp);
+                        return (
+                        <TableRow key={user.id} className={isToggling ? 'opacity-50' : ''}>
                             <TableCell className="font-medium">{user.display_name}</TableCell>
-                            <TableCell>{user.teams?.name || '未所属'}</TableCell>
                             <TableCell>{convertGenerationToGrade(user.generation)}</TableCell>
                             <TableCell>
-                                <Badge variant={user.role === 1 ? "destructive" : "outline"}>{user.role === 1 ? '管理者' : '部員'}</Badge>
+                                <Badge variant="outline">{getStatusLabel(user.status)}</Badge>
                             </TableCell>
-                             <TableCell>
-                                <Badge variant={user.status === 'in' ? 'default' : 'secondary'}>{user.status === 'in' ? '出勤中' : '退勤'}</Badge>
+                            <TableCell>
+                                <Badge variant={getAttendanceStatusBadgeVariant(attendanceStatus)}>
+                                    {getAttendanceStatusLabel(attendanceStatus)}
+                                </Badge>
                             </TableCell>
-                            <TableCell className="font-mono">{user.card_id}</TableCell>
-                             <TableCell>
-                                <Badge variant={user.is_active ? "default" : "secondary"}>{user.is_active ? '有効' : '無効'}</Badge>
-                            </TableCell>
-                            <TableCell className="space-x-2 flex items-center">
-                                <Button size="sm" variant="outline" onClick={() => handleForceToggle(user.id)} disabled={isToggling}>
-                                    {user.status === 'in' ? '強制退勤させる' : '強制出勤させる'}
-                                </Button>
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button size="icon" variant="ghost" onClick={() => handleEdit(user)}>
-                                                <Edit className="h-4 w-4" />
-                                                <span className="sr-only">Edit user</span>
+                            <TableCell className="font-mono text-sm">{user.card_id || <span className="text-muted-foreground">未登録</span>}</TableCell>
+                            <TableCell className="space-x-2">
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" variant="outline" asChild>
+                                        <Link href={`/admin/users/${user.id}`}>
+                                            <Eye className="h-4 w-4 mr-1" />
+                                            詳細
+                                        </Link>
+                                    </Button>
+                                    <Dialog open={editingUser?.id === user.id} onOpenChange={(open) => {
+                                        if (!open) {
+                                            setEditingUser(null);
+                                            setNewCardId('');
+                                        }
+                                    }}>
+                                        <DialogTrigger asChild>
+                                            <Button size="sm" variant="outline" onClick={() => {
+                                                setEditingUser({ id: user.id, currentCardId: user.card_id || '' });
+                                                setNewCardId(user.card_id || '');
+                                            }}>
+                                                <Edit className="h-4 w-4 mr-1" />
+                                                カードID
                                             </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>ユーザー情報を編集</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>カードIDを変更</DialogTitle>
+                                                <DialogDescription>
+                                                    {user.display_name} さんのカードIDを変更します
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="grid gap-4 py-4">
+                                                <div className="grid gap-2">
+                                                    <Label htmlFor="cardId">新しいカードID</Label>
+                                                    <Input
+                                                        id="cardId"
+                                                        value={newCardId}
+                                                        onChange={(e) => setNewCardId(e.target.value)}
+                                                        placeholder="カードIDを入力"
+                                                        className="font-mono"
+                                                    />
+                                                    <p className="text-sm text-muted-foreground">
+                                                        現在: <code className="font-mono">{user.card_id || '未設定'}</code>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={() => {
+                                                    setEditingUser(null);
+                                                    setNewCardId('');
+                                                }}>
+                                                    キャンセル
+                                                </Button>
+                                                <Button onClick={() => handleUpdateCardId(user.id)} disabled={isUpdatingCardId || !newCardId}>
+                                                    {isUpdatingCardId ? '更新中...' : '更新'}
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                    <Button size="sm" variant={attendanceStatus === 'clocked_in' ? 'destructive' : 'default'} onClick={() => handleForceToggle(user.id)} disabled={isToggling}>
+                                        {attendanceStatus === 'clocked_in' ? '強制退勤' : '強制出勤'}
+                                    </Button>
+                                </div>
                             </TableCell>
                         </TableRow>
-                    ))}
+                        );
+                    })}
                 </TableBody>
             </Table>
             </CardContent>
-             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent>
-                    <form onSubmit={handleSubmit}>
-                        <DialogHeader>
-                            <DialogTitle>ユーザー情報の編集</DialogTitle>
-                            <DialogDescription>
-                                {editingUser?.display_name} の情報を編集します。
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div>
-                                <Label htmlFor="display_name">表示名</Label>
-                                <Input id="display_name" name="display_name" defaultValue={editingUser?.display_name} required />
-                            </div>
-                            <div>
-                                <Label htmlFor="generation">期生</Label>
-                                <Input id="generation" name="generation" type="number" defaultValue={editingUser?.generation} required />
-                            </div>
-                            <div>
-                                <Label htmlFor="team_id">班</Label>
-                                <Select name="team_id" defaultValue={String(editingUser?.team_id)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="班を選択" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {teams.map(team => (
-                                            <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                             <div>
-                                <Label htmlFor="role">役割</Label>
-                                <Select name="role" defaultValue={String(editingUser?.role)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="役割を選択" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="0">部員</SelectItem>
-                                        <SelectItem value="1">管理者</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                             <div>
-                                <Label htmlFor="card_id">カードID</Label>
-                                <Input id="card_id" name="card_id" defaultValue={editingUser?.card_id} required />
-                            </div>
-                             <div className="flex items-center space-x-2">
-                                <Switch id="is_active" name="is_active" defaultChecked={editingUser?.is_active} />
-                                <Label htmlFor="is_active">アカウントを有効にする</Label>
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild>
-                                <Button variant="outline" type="button">キャンセル</Button>
-                            </DialogClose>
-                            <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting ? "保存中..." : "保存"}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </Card>
   )
 }
+
+    

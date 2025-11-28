@@ -46,7 +46,7 @@ import {
   } from "@/components/ui/alert-dialog"
 
 interface TeamsTabProps {
-  teams: Tables<"teams">[];
+  teams: Tables<"member", "teams">[];
 }
 
 export default function TeamsTab({ teams: initialTeams }: TeamsTabProps) {
@@ -54,9 +54,9 @@ export default function TeamsTab({ teams: initialTeams }: TeamsTabProps) {
   const [teams, setTeams] = useState(initialTeams);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [currentTeam, setCurrentTeam] = useState<Tables<"teams"> | null>(null);
+  const [currentTeam, setCurrentTeam] = useState<Tables<"member", "teams"> | null>(null);
 
-  const handleEdit = (team: Tables<"teams">) => {
+  const handleEdit = (team: Tables<"member", "teams">) => {
     setCurrentTeam(team);
     setDialogOpen(true);
   };
