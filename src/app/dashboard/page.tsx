@@ -14,6 +14,7 @@ import { format, subDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./_components/AttendanceCalendar";
 import ClientRelativeTime from "./_components/ClientRelativeTime";
+import CardMigrationAlert from "./_components/CardMigrationAlert";
 import { calculateTotalActivityTime } from "../actions";
 import { convertGenerationToGrade } from "@/lib/utils";
 import { redirect } from "next/navigation";
@@ -45,16 +46,35 @@ export default async function DashboardPage() {
     if (profileError || !profile) {
         console.error('Profile fetch error:', profileError);
         console.error('User ID:', user.id);
-        redirect('/register/unregistered');
+        redirect('/register/member-unregistered');
     }
+
+    // カードID情報を取得
+    const { data: attendanceUser } = await supabase
+        .schema('attendance')
+        .from('users')
+        .select('card_id')
+        .eq('supabase_auth_user_id', user!.id)
+        .single();
+
+    const hasCardId = attendanceUser?.card_id && attendanceUser.card_id.trim() !== '';
+
 
     // Discord UIDから本名を取得
     let displayName = '名無しさん';
+    let firstname = '';
+    let lastname = '';
     try {
       if (profile.discord_uid) {
           const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
           if (nickname) {
               displayName = nickname;
+              // 名前を分割（姓名の区切りは空白と仮定）
+              const nameParts = nickname.split(/\s+/);
+              if (nameParts.length >= 2) {
+                  lastname = nameParts[0].toLowerCase();
+                  firstname = nameParts[1].toLowerCase();
+              }
           }
       }
     } catch (e) {
@@ -97,6 +117,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+        {!hasCardId && (
+            <CardMigrationAlert
+                userId={user!.id}
+                firstname={firstname}
+                lastname={lastname}
+            />
+        )}
+        
         <div className="flex justify-between items-start">
             <div>
                 <h1 className="text-3xl font-bold">マイダッシュボード</h1>

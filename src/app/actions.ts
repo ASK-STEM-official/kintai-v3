@@ -1089,3 +1089,103 @@ export async function updateUserCardId(userId: string, newCardId: string) {
     revalidatePath('/admin');
     return { success: true, message: 'カードIDを更新しました。' };
 }
+
+// 旧システムからカードIDを引き継ぐ
+export async function migrateLegacyCardId(userId: string, firstname?: string, lastname?: string, legacyUid?: string) {
+    'use server';
+    
+    const supabase = await createSupabaseAdminClient();
+    
+    try {
+        const { searchLegacyUserByName, searchLegacyUsersByPartialName } = await import('@/lib/firebase/legacy');
+        
+        let legacyUser = null;
+        
+        // legacyUidが指定されている場合は、そのユーザーを検索
+        if (legacyUid) {
+            const allUsers = await searchLegacyUsersByPartialName('');
+            legacyUser = allUsers.find(u => u.uid === legacyUid) || null;
+        } 
+        // firstname/lastnameが指定されている場合は名前で検索
+        else if (firstname && lastname) {
+            legacyUser = await searchLegacyUserByName(firstname, lastname);
+        } else {
+            return { success: false, message: 'ユーザー情報が不足しています。' };
+        }
+        
+        if (!legacyUser || !legacyUser.cardId) {
+            return { success: false, message: '旧システムにユーザーが見つかりませんでした。' };
+        }
+        
+        // カードIDを正規化
+        const normalizedCardId = legacyUser.cardId.replace(/:/g, '').toLowerCase();
+        
+        // 既存のカードIDと重複していないか確認
+        const { data: existingCard } = await supabase
+            .schema('attendance')
+            .from('users')
+            .select('supabase_auth_user_id')
+            .eq('card_id', normalizedCardId)
+            .single();
+        
+        if (existingCard && existingCard.supabase_auth_user_id !== userId) {
+            return { success: false, message: 'このカードIDは既に別のユーザーに登録されています。' };
+        }
+        
+        // attendance.usersレコードの存在確認
+        const { data: existingUser } = await supabase
+            .schema('attendance')
+            .from('users')
+            .select('supabase_auth_user_id')
+            .eq('supabase_auth_user_id', userId)
+            .single();
+        
+        if (existingUser) {
+            // 既存レコードがある場合は更新
+            const { error } = await supabase
+                .schema('attendance')
+                .from('users')
+                .update({ card_id: normalizedCardId })
+                .eq('supabase_auth_user_id', userId);
+            
+            if (error) {
+                console.error('Legacy card ID migration error (update):', error);
+                return { success: false, message: 'カードIDの移行に失敗しました。' };
+            }
+        } else {
+            // レコードがない場合は新規作成
+            const { error } = await supabase
+                .schema('attendance')
+                .from('users')
+                .insert({
+                    supabase_auth_user_id: userId,
+                    card_id: normalizedCardId
+                });
+            
+            if (error) {
+                console.error('Legacy card ID migration error (insert):', error);
+                return { success: false, message: 'カードIDの登録に失敗しました。' };
+            }
+        }
+        
+        revalidatePath('/dashboard');
+        return { success: true, message: `カードID (${normalizedCardId}) を引き継ぎました。`, cardId: normalizedCardId };
+    } catch (error) {
+        console.error('Legacy migration error:', error);
+        return { success: false, message: '旧システムへの接続に失敗しました。' };
+    }
+}
+
+// 旧システムのユーザーを部分検索
+export async function searchLegacyUsers(searchTerm: string) {
+    'use server';
+    
+    try {
+        const { searchLegacyUsersByPartialName } = await import('@/lib/firebase/legacy');
+        const users = await searchLegacyUsersByPartialName(searchTerm);
+        return { success: true, users };
+    } catch (error) {
+        console.error('Search error:', error);
+        return { success: false, users: [], message: '検索に失敗しました。' };
+    }
+}

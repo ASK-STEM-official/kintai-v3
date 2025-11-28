@@ -25,7 +25,7 @@ export default async function OverallDashboardPage() {
     if (profileError || !profile) {
         console.error('Profile fetch error:', profileError);
         console.error('User ID:', user.id);
-        redirect('/register/unregistered');
+        redirect('/register/member-unregistered');
     }
 
     // 全体統計を取得

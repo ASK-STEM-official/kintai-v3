@@ -52,20 +52,27 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
     const error = searchParams.get('error');
     const router = useRouter();
 
-    if (token === 'unregistered') {
+    if (token === 'card-unregistered') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
                 <Card className="w-full max-w-md">
                     <CardHeader className="items-center text-center">
-                        <Icons.UserPlus className="w-16 h-16 text-destructive mb-4" />
+                        <AlertTriangle className="w-16 h-16 text-orange-500 mb-4" />
                         <CardTitle className="text-2xl">カードが未登録です</CardTitle>
                         <CardDescription>
-                            ダッシュボードにアクセスするには、まずカードを登録する必要があります。
+                            出退勤の記録にはカードの登録が必要です。
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="text-center space-y-4">
-                        <p className="text-muted-foreground">お手数ですが、Kiosk端末でQRコードをスキャンして登録を完了してください。</p>
-                        <Button asChild variant="outline">
+                        <p className="text-muted-foreground">
+                            旧システムからカードIDを引き継ぐか、部室のKiosk端末でカードをスキャンして登録してください。
+                        </p>
+                        <div className="space-y-2">
+                            <Button asChild className="w-full">
+                                <Link href="/dashboard">ダッシュボードで旧カードを引き継ぐ</Link>
+                            </Button>
+                        </div>
+                        <Button asChild variant="ghost" className="w-full">
                             <Link href="/login">ログインページに戻る</Link>
                         </Button>
                     </CardContent>

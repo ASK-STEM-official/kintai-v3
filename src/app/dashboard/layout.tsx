@@ -1,6 +1,6 @@
 
 import { signOut } from "@/app/actions";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
   Sidebar,
@@ -133,21 +133,34 @@ export default async function DashboardLayout({
     .eq('supabase_auth_user_id', user.id)
     .single();
 
+  // member.membersに登録されていない場合は、メインシステム登録画面へ
   if (profileError || !profile) {
     console.error('Profile fetch error:', profileError);
     console.error('User ID:', user.id);
-    return redirect("/register/unregistered");
+    return redirect("/register/member-unregistered");
   }
 
-  const { data: attendanceUser } = await supabase
+  // カードID未登録でもダッシュボードにアクセス可能にする
+  // （カード未登録の警告はpage.tsxで表示）
+  const { data: attendanceUser, error: attendanceError } = await supabase
     .schema('attendance')
     .from('users')
     .select('card_id')
     .eq('supabase_auth_user_id', user.id)
     .single();
 
-  if (!attendanceUser) {
-    return redirect("/register/unregistered");
+  // attendanceUserレコード自体が存在しない場合はカード未登録画面へ
+  // （レコードは引き継ぎ時に作成される）
+  if (attendanceError?.code === 'PGRST116' || !attendanceUser) {
+    // PGRST116 = レコードが見つからない
+    console.log('No attendance user record found, redirecting to card registration:', user.id);
+    return redirect("/register/card-unregistered");
+  } 
+  
+  if (attendanceError) {
+    // その他のエラー（DB接続エラーなど）
+    console.error('Unexpected error fetching attendance user:', attendanceError);
+    return redirect("/register/card-unregistered");
   }
 
   const isAdmin = profile.is_admin;
