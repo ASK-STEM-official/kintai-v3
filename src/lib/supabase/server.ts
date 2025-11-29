@@ -39,14 +39,6 @@ export async function createSupabaseServerClient() {
         maxAge: 60 * 60 * 24 * 7, // 7日間
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
-        path: '/',
-        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost',
-      },
-      auth: {
-        flowType: 'pkce',
-        detectSessionInUrl: true,
-        persistSession: true,
-        autoRefreshToken: true,
       },
     }
   )

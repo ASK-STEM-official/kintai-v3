@@ -1,9 +1,9 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import UsersTab from "./components/UsersTab";
-import LogsTab from "./components/LogsTab";
-import SystemTab from "./components/SystemTab";
+import UsersTab from "./_components/UsersTab";
+import LogsTab from "./_components/LogsTab";
+import SystemTab from "./_components/SystemTab";
 import { getAllUsersWithStatus, getAllTeams, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
 import { User, History, AlertCircle, Power, FilePenLine } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

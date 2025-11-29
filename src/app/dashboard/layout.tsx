@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
-import DashboardNav from "./components/DashboardNav";
+import DashboardNav from "./_components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { fetchMemberNickname } from "@/lib/name-api";
 import { checkDiscordMembership } from "@/app/actions";

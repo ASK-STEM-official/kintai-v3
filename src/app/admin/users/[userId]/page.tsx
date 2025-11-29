@@ -9,19 +9,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format, subDays } from "date-fns";
+import { subDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { fetchMemberNickname } from "@/lib/name-api";
 import { calculateTotalActivityTime } from "@/app/actions";
-import { convertGenerationToGrade } from "@/lib/utils";
+import { convertGenerationToGrade, formatJst } from "@/lib/utils";
 import { Calendar as CalendarIcon, Clock, Percent, BarChart } from "lucide-react";
-import AttendanceCalendar from "@/app/dashboard/components/AttendanceCalendar";
+import AttendanceCalendar from "@/app/dashboard/_components/AttendanceCalendar";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import {toZonedTime} from "date-fns-tz";
 
 export const dynamic = 'force-dynamic';
+
+const timeZone = 'Asia/Tokyo';
 
 export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
     const resolvedParams = await params;
@@ -74,8 +77,9 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
       console.error('Failed to fetch nickname:', e);
     }
 
-    const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-    const userCreatedAtDate = format(new Date(profile.joined_at), 'yyyy-MM-dd');
+    const today = toZonedTime(new Date(), timeZone);
+    const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');
+    const userCreatedAtDate = formatJst(new Date(profile.joined_at), 'yyyy-MM-dd');
 
     const [attendancesResult, totalActivityTime] = await Promise.all([
       supabase.schema('attendance').from('attendances').select('*').eq('user_id', resolvedParams.userId).order('timestamp', { ascending: false }).limit(10),
@@ -125,7 +129,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
             </div>
         </div>
       
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">出勤日数</CardTitle>
@@ -195,7 +199,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                                             {att.type === 'in' ? '出勤' : '退勤'}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
+                                    <TableCell>{formatJst(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss')}</TableCell>
                                     <TableCell className="font-mono text-sm">{att.card_id}</TableCell>
                                 </TableRow>
                             )) : (
