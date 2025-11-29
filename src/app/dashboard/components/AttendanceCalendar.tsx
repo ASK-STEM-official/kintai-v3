@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { toZonedTime } from 'date-fns-tz';
 
 interface AttendanceRecord {
   date: string;
@@ -114,13 +115,7 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
     }
   }
 
-  const attendedDays = useMemo(() => attendance.map(a => {
-    const d = new Date(a.date);
-    d.setHours(0,0,0,0);
-    // Adjust for timezone offset to prevent off-by-one day errors
-    const timezoneOffset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() + timezoneOffset);
-  }), [attendance]);
+  const attendedDays = useMemo(() => attendance.map(a => new Date(a.date.replace(/-/g, '/'))), [attendance]);
 
   const handleDayClick = (day: Date | undefined) => {
     setSelectedDate(day);
