@@ -10,17 +10,20 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge";
-import { format, subDays } from "date-fns";
+import { subDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./_components/AttendanceCalendar";
 import ClientRelativeTime from "./_components/ClientRelativeTime";
 import CardMigrationAlert from "./_components/CardMigrationAlert";
 import { calculateTotalActivityTime } from "../actions";
-import { convertGenerationToGrade } from "@/lib/utils";
+import { convertGenerationToGrade, formatJst } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { fetchMemberNickname } from "@/lib/name-api";
+import { utcToZonedTime } from "date-fns-tz";
 
 export const dynamic = 'force-dynamic';
+
+const timeZone = 'Asia/Tokyo';
 
 export default async function DashboardPage() {
     const supabase = await createSupabaseServerClient();
@@ -49,7 +52,6 @@ export default async function DashboardPage() {
         redirect('/register/member-unregistered');
     }
 
-    // カードID情報を取得
     const { data: attendanceUser } = await supabase
         .schema('attendance')
         .from('users')
@@ -60,7 +62,6 @@ export default async function DashboardPage() {
     const hasCardId = attendanceUser?.card_id && attendanceUser.card_id.trim() !== '';
 
 
-    // Discord UIDから本名を取得
     let displayName = '名無しさん';
     let firstname = '';
     let lastname = '';
@@ -69,7 +70,6 @@ export default async function DashboardPage() {
           const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
           if (nickname) {
               displayName = nickname;
-              // 名前を分割（姓名の区切りは空白と仮定）
               const nameParts = nickname.split(/\s+/);
               if (nameParts.length >= 2) {
                   lastname = nameParts[0].toLowerCase();
@@ -81,10 +81,11 @@ export default async function DashboardPage() {
       console.error('Failed to fetch nickname:', e);
     }
 
-    const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-    const userCreatedAtDate = format(new Date(profile!.joined_at), 'yyyy-MM-dd');
+    const today = utcToZonedTime(new Date(), timeZone);
+    const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');
+    const userCreatedAtDate = formatJst(new Date(profile!.joined_at), 'yyyy-MM-dd');
 
-    const [attendancesResult, totalActivityTime] = await Promise.all([
+    const [attendancesResult, totalActivityTimeInHours] = await Promise.all([
       supabase.schema('attendance').from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5),
       calculateTotalActivityTime(user!.id, 30)
     ]);
@@ -155,7 +156,7 @@ export default async function DashboardPage() {
                     <Clock className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{totalActivityTime.toFixed(1)} 時間</div>
+                    <div className="text-2xl font-bold">{totalActivityTimeInHours.toFixed(1)} 時間</div>
                     <p className="text-xs text-muted-foreground">
                         過去30日間
                     </p>
@@ -206,7 +207,7 @@ export default async function DashboardPage() {
                                             {att.type === 'in' ? '出勤' : '退勤'}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{format(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss', {locale: ja})}</TableCell>
+                                    <TableCell>{formatJst(new Date(att.timestamp), 'yyyy/MM/dd HH:mm:ss')}</TableCell>
                                     <TableCell><ClientRelativeTime date={att.timestamp} /></TableCell>
                                 </TableRow>
                             )) : (

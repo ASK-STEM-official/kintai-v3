@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { ja } from 'date-fns/locale';
+
+const timeZone = 'Asia/Tokyo';
 
 export default function Clock() {
   const [time, setTime] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Set initial time on client mount
     setTime(new Date());
 
     const timerId = setInterval(() => {
@@ -20,10 +21,10 @@ export default function Clock() {
   return (
     <div className="text-center text-gray-400">
       <p className="text-8xl font-bold text-white font-mono tracking-wider h-[96px]">
-        {time ? format(time, 'HH:mm') : ''}
+        {time ? formatInTimeZone(time, timeZone, 'HH:mm') : ''}
       </p>
       <p className="text-2xl mt-2 font-semibold h-[32px]">
-        {time ? format(time, 'yyyy年M月d日 E曜日', { locale: ja }) : ''}
+        {time ? formatInTimeZone(time, timeZone, 'yyyy年M月d日 EEEE', { locale: ja }) : ''}
       </p>
     </div>
   );

@@ -1,9 +1,24 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { formatInTimeZone } from "date-fns-tz"
+import { ja } from "date-fns/locale"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+const timeZone = 'Asia/Tokyo';
+
+/**
+ * 指定された日付をJSTでフォーマットします
+ * @param date フォーマットする日付
+ * @param formatString フォーマット文字列
+ * @returns フォーマットされた日付文字列
+ */
+export function formatJst(date: Date | number | string, formatString: string): string {
+  return formatInTimeZone(date, timeZone, formatString, { locale: ja });
+}
+
 
 /**
  * 期生から現在の学年を計算します。

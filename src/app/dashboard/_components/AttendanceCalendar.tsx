@@ -9,7 +9,8 @@ import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import { utcToZonedTime } from 'date-fns-tz';
+import { formatJst } from '@/lib/utils';
 
 interface AttendanceRecord {
   date: string;
@@ -21,6 +22,8 @@ interface AttendanceDetails {
   lastOut: string | null;
   totalMinutes: number;
 }
+
+const timeZone = 'Asia/Tokyo';
 
 export default function AttendanceCalendar({ userId }: { userId: string }) {
   const [date, setDate] = useState<Date>(new Date());
@@ -68,13 +71,22 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
       const firstIn = inRecords.length > 0 ? inRecords[0].timestamp : null;
       const lastOut = outRecords.length > 0 ? outRecords[outRecords.length - 1].timestamp : null;
 
-      // Calculate total minutes
       let totalMinutes = 0;
-      for (let i = 0; i < inRecords.length; i++) {
-        const inTime = new Date(inRecords[i].timestamp);
-        const outTime = outRecords[i] ? new Date(outRecords[i].timestamp) : new Date();
-        totalMinutes += (outTime.getTime() - inTime.getTime()) / (1000 * 60);
+      let lastInTime: Date | null = null;
+      records.forEach(rec => {
+          if (rec.type === 'in') {
+              lastInTime = new Date(rec.timestamp);
+          } else if (rec.type === 'out' && lastInTime) {
+              const outTime = new Date(rec.timestamp);
+              totalMinutes += (outTime.getTime() - lastInTime.getTime()) / (1000 * 60);
+              lastInTime = null; 
+          }
+      });
+      // Handle case where user is still clocked in
+      if (lastInTime) {
+          totalMinutes += (new Date().getTime() - lastInTime.getTime()) / (1000 * 60);
       }
+
 
       setAttendanceDetails({
         firstIn,
@@ -88,7 +100,6 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
 
   const handleMonthChange = (month: Date) => {
     setDate(month);
-    // 月変更時に選択日を新しい月の同じ日に更新
     if (selectedDate) {
       const newSelectedDate = new Date(month.getFullYear(), month.getMonth(), selectedDate.getDate());
       setSelectedDate(newSelectedDate);
@@ -96,28 +107,17 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
   };
   
   const goToPreviousMonth = () => {
-    const newMonth = new Date(date.getFullYear(), date.getMonth() - 1, 1);
-    setDate(newMonth);
-    // 月変更時に選択日を新しい月の同じ日に更新
-    if (selectedDate) {
-      const newSelectedDate = new Date(newMonth.getFullYear(), newMonth.getMonth(), selectedDate.getDate());
-      setSelectedDate(newSelectedDate);
-    }
+    handleMonthChange(new Date(date.getFullYear(), date.getMonth() - 1, 1));
   }
 
   const goToNextMonth = () => {
-    const newMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-    setDate(newMonth);
-    // 月変更時に選択日を新しい月の同じ日に更新
-    if (selectedDate) {
-      const newSelectedDate = new Date(newMonth.getFullYear(), newMonth.getMonth(), selectedDate.getDate());
-      setSelectedDate(newSelectedDate);
-    }
+    handleMonthChange(new Date(date.getFullYear(), date.getMonth() + 1, 1));
   }
 
   const attendedDays = useMemo(() => attendance.map(a => {
-    // 日付文字列をUTCとして解釈し、タイムゾーンによるずれを防ぐ
-    return zonedTimeToUtc(a.date, 'UTC');
+    // Treat the date string as a UTC date and convert it to JST for correct display.
+    // e.g., "2023-10-27" becomes "2023-10-27T00:00:00Z", which is correctly handled.
+    return utcToZonedTime(new Date(a.date), timeZone);
   }), [attendance]);
 
   const handleDayClick = (day: Date | undefined) => {
@@ -126,10 +126,11 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
 
   const formatTime = (timestamp: string | null) => {
     if (!timestamp) return '-';
-    return format(new Date(timestamp), 'HH:mm', { locale: ja });
+    return formatJst(new Date(timestamp), 'HH:mm');
   };
 
   const formatDuration = (minutes: number) => {
+    if (isNaN(minutes) || minutes < 0) return '0時間0分';
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours}時間${mins}分`;
@@ -140,7 +141,7 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
       <div>
         <div className="flex justify-between items-center mb-2 px-1">
             <h3 className="text-lg font-semibold">
-                {format(date, 'yyyy年 M月', { locale: ja })}
+                {formatJst(date, 'yyyy年 M月')}
             </h3>
             <div className='flex items-center gap-1'>
               <Button variant="ghost" size="icon" onClick={goToPreviousMonth} disabled={isLoading}>
