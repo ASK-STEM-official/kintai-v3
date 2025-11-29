@@ -242,7 +242,8 @@ export async function signInWithDiscord(formData?: FormData) {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             maxAge: 600, // 10分
-            path: '/'
+            path: '/',
+            sameSite: 'lax'
         });
     }
     
@@ -251,6 +252,7 @@ export async function signInWithDiscord(formData?: FormData) {
         options: {
             redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
             scopes: 'identify',
+            skipBrowserRedirect: false,
         },
     });
 

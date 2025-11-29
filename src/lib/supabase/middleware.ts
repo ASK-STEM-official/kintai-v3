@@ -52,6 +52,12 @@ export async function updateSession(request: NextRequest) {
           })
         },
       },
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
     }
   )
 
