@@ -16,10 +16,14 @@ import { fetchMemberNickname } from "@/lib/name-api";
 import { calculateTotalActivityTime } from "@/app/actions";
 import { convertGenerationToGrade } from "@/lib/utils";
 import { Calendar as CalendarIcon, Clock, Percent, BarChart } from "lucide-react";
-import AttendanceCalendar from "@/app/dashboard/components/AttendanceCalendar";
+import dynamicImport from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+
+const AttendanceCalendar = dynamicImport(() => import("@/app/dashboard/components/AttendanceCalendar"), {
+  ssr: false,
+});
 
 export const dynamic = 'force-dynamic';
 
