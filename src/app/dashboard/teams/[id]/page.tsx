@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Users, Calendar, BarChart3, Clock, Lock } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import ClientRelativeTime from "../../_components/ClientRelativeTime";
+import ClientRelativeTime from "../../components/ClientRelativeTime";
 import { convertGenerationToGrade } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';

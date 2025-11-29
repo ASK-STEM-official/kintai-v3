@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Bot, UserCog } from "lucide-react";
-import ClientRelativeTime from "@/app/dashboard/_components/ClientRelativeTime";
+import ClientRelativeTime from "@/app/dashboard/components/ClientRelativeTime";
 
 type DailyLogoutLog = {
   id: string;

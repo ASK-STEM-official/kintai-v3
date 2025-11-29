@@ -24,7 +24,7 @@ import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { Tables } from "@/lib/types";
-import ClientRelativeTime from "@/app/dashboard/_components/ClientRelativeTime";
+import ClientRelativeTime from "@/app/dashboard/components/ClientRelativeTime";
 import {
     AlertDialog,
     AlertDialogAction,
