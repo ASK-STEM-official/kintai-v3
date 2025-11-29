@@ -12,9 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format, subDays } from "date-fns";
 import { ja } from "date-fns/locale";
-import AttendanceCalendar from "./components/AttendanceCalendar";
-import ClientRelativeTime from "./components/ClientRelativeTime";
-import CardMigrationAlert from "./components/CardMigrationAlert";
+import AttendanceCalendar from "@/app/dashboard/components/AttendanceCalendar";
+import ClientRelativeTime from "@/app/dashboard/components/ClientRelativeTime";
+import CardMigrationAlert from "@/app/dashboard/components/CardMigrationAlert";
 import { calculateTotalActivityTime } from "../actions";
 import { convertGenerationToGrade } from "@/lib/utils";
 import { redirect } from "next/navigation";
