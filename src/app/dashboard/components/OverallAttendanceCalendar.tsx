@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useMemo, useTransition, useEffect } from 'react';
 import { Calendar } from '@/components/ui/calendar';
@@ -53,11 +53,7 @@ export default function OverallAttendanceCalendar() {
     const attendedDays = useMemo(() => {
         return Object.keys(dailyCounts)
             .filter(dateStr => (dailyCounts[dateStr] || 0) > 0)
-            .map(dateStr => {
-                const d = new Date(dateStr);
-                const timezoneOffset = d.getTimezoneOffset() * 60000;
-                return new Date(d.getTime() + timezoneOffset);
-            });
+            .map(dateStr => new Date(dateStr.replace(/-/g, '/'))); // 'yyyy/MM/dd' for timezone-safe parsing
     }, [dailyCounts]);
 
     const formatDay = (day: Date) => {
