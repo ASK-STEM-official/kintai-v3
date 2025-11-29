@@ -20,7 +20,7 @@ import AttendanceCalendar from "@/app/dashboard/_components/AttendanceCalendar";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import {utcToZonedTime} from "date-fns-tz";
+import {toZonedTime} from "date-fns-tz";
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +77,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
       console.error('Failed to fetch nickname:', e);
     }
 
-    const today = utcToZonedTime(new Date(), timeZone);
+    const today = toZonedTime(new Date(), timeZone);
     const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');
     const userCreatedAtDate = formatJst(new Date(profile.joined_at), 'yyyy-MM-dd');
 

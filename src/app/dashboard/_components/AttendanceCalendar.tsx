@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { utcToZonedTime } from 'date-fns-tz';
+import { toZonedTime } from 'date-fns-tz';
 import { formatJst } from '@/lib/utils';
 
 interface AttendanceRecord {
@@ -117,7 +117,7 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
   const attendedDays = useMemo(() => attendance.map(a => {
     // Treat the date string as a UTC date and convert it to JST for correct display.
     // e.g., "2023-10-27" becomes "2023-10-27T00:00:00Z", which is correctly handled.
-    return utcToZonedTime(new Date(a.date), timeZone);
+    return new Date(a.date.replace(/-/g, '/'));
   }), [attendance]);
 
   const handleDayClick = (day: Date | undefined) => {

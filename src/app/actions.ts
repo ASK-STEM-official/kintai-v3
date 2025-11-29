@@ -9,7 +9,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { differenceInSeconds, startOfDay, endOfDay, subDays, format as formatDate, startOfMonth, endOfMonth } from 'date-fns';
-import { formatInTimeZone, zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import { fetchAllMemberNames, fetchMemberNickname } from '@/lib/name-api';
 import { fetchMemberStatus } from '@/lib/member-status-api';
 
@@ -281,7 +281,7 @@ export async function signOut() {
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
   const supabase = await createSupabaseAdminClient();
-  const zonedMonth = utcToZonedTime(month, timeZone);
+  const zonedMonth = toZonedTime(month, timeZone);
   const start = startOfMonth(zonedMonth);
   const end = endOfMonth(zonedMonth);
 
@@ -685,7 +685,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
 
 async function getTeamStats(teamId: string) {
     const supabase = await createSupabaseAdminClient();
-    const today = utcToZonedTime(new Date(), timeZone);
+    const today = toZonedTime(new Date(), timeZone);
 
     const { count: totalMembersCount, error: totalMembersError } = await supabase
         .schema('member')
@@ -750,7 +750,7 @@ export async function getMonthlyTeamAttendanceStats(teamId: string, days: number
 
     if(attendanceUserIds.length === 0) return 0;
     
-    const today = utcToZonedTime(new Date(), timeZone);
+    const today = toZonedTime(new Date(), timeZone);
     const startDate = formatDate(subDays(today, days), 'yyyy-MM-dd');
     const endDate = formatDate(today, 'yyyy-MM-dd');
 
@@ -865,7 +865,7 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
 
 export async function getOverallStats(days: number = 30) {
     const supabase = await createSupabaseAdminClient();
-    const today = utcToZonedTime(new Date(), timeZone);
+    const today = toZonedTime(new Date(), timeZone);
     const startDate = formatDate(subDays(today, days), 'yyyy-MM-dd');
     
     const { data: todayAttendances, error: todayAttError } = await supabase
@@ -1150,5 +1150,4 @@ export async function checkDiscordMembership(discordUid: string) {
         return { success: false, isInServer: false, message: 'Discordサーバーの確認に失敗しました。' };
     }
 }
-
 
