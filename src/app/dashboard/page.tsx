@@ -20,9 +20,7 @@ import { convertGenerationToGrade } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { fetchMemberNickname } from "@/lib/name-api";
 
-const AttendanceCalendar = dynamicImport(() => import("./components/AttendanceCalendar"), {
-  ssr: false,
-});
+const AttendanceCalendar = dynamicImport(() => import("./components/AttendanceCalendar"));
 
 export const dynamic = 'force-dynamic';
 

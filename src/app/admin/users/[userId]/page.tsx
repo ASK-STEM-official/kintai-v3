@@ -21,9 +21,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-const AttendanceCalendar = dynamicImport(() => import("@/app/dashboard/components/AttendanceCalendar"), {
-  ssr: false,
-});
+const AttendanceCalendar = dynamicImport(() => import("@/app/dashboard/components/AttendanceCalendar"));
 
 export const dynamic = 'force-dynamic';
 

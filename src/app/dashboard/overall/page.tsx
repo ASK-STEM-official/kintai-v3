@@ -5,9 +5,7 @@ import { redirect } from "next/navigation";
 import { getOverallStats } from "@/app/actions";
 import dynamicImport from "next/dynamic";
 
-const OverallAttendanceCalendar = dynamicImport(() => import("../components/OverallAttendanceCalendar"), {
-  ssr: false,
-});
+const OverallAttendanceCalendar = dynamicImport(() => import("../components/OverallAttendanceCalendar"));
 
 export const dynamic = 'force-dynamic';
 
