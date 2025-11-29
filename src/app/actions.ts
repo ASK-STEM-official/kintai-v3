@@ -946,7 +946,8 @@ export async function getDailyAttendanceCounts(year: number, month: number) {
     const result: Record<string, number> = {};
     data?.forEach((row: { date: string, count: number }) => {
         if(row.date) {
-            result[formatDate(new Date(row.date), 'yyyy-MM-dd')] = row.count;
+            const zonedDate = toZonedTime(new Date(row.date), timeZone);
+            result[formatDate(zonedDate, 'yyyy-MM-dd')] = row.count;
         }
     });
 
