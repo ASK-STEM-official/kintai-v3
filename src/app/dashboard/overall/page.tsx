@@ -3,9 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Users, Calendar as CalendarIcon, Clock, TrendingUp } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getOverallStats } from "@/app/actions";
-import dynamicImport from "next/dynamic";
-
-const OverallAttendanceCalendar = dynamicImport(() => import("../components/OverallAttendanceCalendar"));
+import OverallAttendanceCalendar from "../components/OverallAttendanceCalendar";
 
 export const dynamic = 'force-dynamic';
 
