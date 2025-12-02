@@ -1046,6 +1046,7 @@ export async function updateUserCardId(userId: string, newCardId: string) {
     
     const normalizedCardId = newCardId.replace(/:/g, '').toLowerCase();
     
+    // 同じカードIDが既に別のユーザーに登録されていないか確認
     const { data: existingCard } = await supabase
         .schema('attendance')
         .from('users')
@@ -1057,15 +1058,35 @@ export async function updateUserCardId(userId: string, newCardId: string) {
         return { success: false, message: 'このカードIDは既に別のユーザーに登録されています。' };
     }
     
-    const { error } = await supabase
+    // ユーザーがattendance.usersテーブルに存在するか確認
+    const { data: existingUser } = await supabase
         .schema('attendance')
         .from('users')
-        .update({ card_id: normalizedCardId })
-        .eq('supabase_auth_user_id', userId);
+        .select('supabase_auth_user_id')
+        .eq('supabase_auth_user_id', userId)
+        .single();
+    
+    let error;
+    if (existingUser) {
+        // 既存ユーザーの場合はupdate
+        const result = await supabase
+            .schema('attendance')
+            .from('users')
+            .update({ card_id: normalizedCardId })
+            .eq('supabase_auth_user_id', userId);
+        error = result.error;
+    } else {
+        // 新規ユーザーの場合はinsert
+        const result = await supabase
+            .schema('attendance')
+            .from('users')
+            .insert({ supabase_auth_user_id: userId, card_id: normalizedCardId });
+        error = result.error;
+    }
     
     if (error) {
         console.error('Card ID update error:', error);
-        return { success: false, message: 'カードIDの更新に失敗しました。' };
+        return { success: false, message: `カードIDの更新に失敗しました: ${error.message}` };
     }
     
     revalidatePath('/admin');
