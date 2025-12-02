@@ -425,13 +425,26 @@ export async function getAllUsersWithStatus() {
     const cardMap = new Map(attendanceUsers?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
     const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
+    
+    // RPC関数が定義されていないため、直接SQLクエリで最新の出勤状態を取得
     const { data: latestAttendances, error: rpcError } = await supabase
-      .rpc('get_latest_attendance_for_users', { user_ids: memberIds });
+      .schema('attendance')
+      .from('attendances')
+      .select('user_id, type, timestamp')
+      .in('user_id', memberIds)
+      .order('timestamp', { ascending: false });
 
+    // 各ユーザーごとに最新の記録を取得
     const latestAttendanceMap = new Map<string, { type: string; timestamp: string }>();
     if (latestAttendances) {
+      const userMap = new Map<string, { type: string; timestamp: string }>();
       latestAttendances.forEach(att => {
-        latestAttendanceMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
+        if (!userMap.has(att.user_id)) {
+          userMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
+        }
+      });
+      userMap.forEach((value, key) => {
+        latestAttendanceMap.set(key, value);
       });
     }
 
