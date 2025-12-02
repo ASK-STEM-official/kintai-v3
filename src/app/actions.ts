@@ -700,16 +700,16 @@ async function getTeamStats(teamId: string) {
     const supabase = await createSupabaseAdminClient();
     const today = toZonedTime(new Date(), timeZone);
 
-    const { count: totalMembersCount, error: totalMembersError } = await supabase
+    // OB/OG（status === 2）を除外してチームメンバーを取得
+    const { data: teamMemberRelations } = await supabase
         .schema('member')
         .from('member_team_relations')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', teamId);
-
-    if (totalMembersError) return null;
+        .select('member_id, members!inner(status)')
+        .eq('team_id', teamId)
+        .neq('members.status', 2);
     
-    const { data: teamMemberRelations } = await supabase.schema('member').from('member_team_relations').select('member_id').eq('team_id', teamId);
     const memberIds = teamMemberRelations?.map(m => m.member_id) || [];
+    const totalMembersCount = memberIds.length;
     
     if (memberIds.length === 0) {
       return {
@@ -748,11 +748,13 @@ async function getTeamStats(teamId: string) {
 
 export async function getMonthlyTeamAttendanceStats(teamId: string, days: number): Promise<number> {
     const supabase = await createSupabaseAdminClient();
+    // OB/OG（status === 2）を除外
     const { data: teamMembers, error: teamMembersError } = await supabase
         .schema('member')
         .from('member_team_relations')
-        .select('member_id')
-        .eq('team_id', teamId);
+        .select('member_id, members!inner(status)')
+        .eq('team_id', teamId)
+        .neq('members.status', 2);
 
     if (teamMembersError || !teamMembers || teamMembers.length === 0) return 0;
     
@@ -891,10 +893,12 @@ export async function getOverallStats(days: number = 30) {
     if (todayAttError) console.error('Error fetching today attendees:', todayAttError);
     const todayActiveUsers = todayAttendances ? new Set(todayAttendances.map(a => a.user_id)).size : 0;
     
+    // OB/OG（status === 2）を除外して現役部員のみカウント
     const { count: totalMembers } = await supabase
         .schema('member')
         .from('members')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .neq('status', 2);
     
     const { data: distinctDates, error: distinctDatesError } = await supabase
         .schema('attendance')

@@ -77,6 +77,7 @@ interface UsersTabProps {
 
 type AttendanceStatus = 'not_clocked_in' | 'clocked_in' | 'clocked_out' | 'all';
 type UserStatus = 0 | 1 | 2 | null; // 0: 中学生, 1: 高校生, 2: OB/OG
+type StatusFilter = UserStatus | 'all' | 'active'; // 'active' = OB/OG以外（中学生・高校生）
 
 const SortableHeader = ({
   children,
@@ -168,7 +169,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     const [newCardId, setNewCardId] = useState('');
     
     // フィルター状態
-    const [filterStatus, setFilterStatus] = useState<UserStatus | 'all'>('all'); // 中学生/高校生/OB/OG
+    const [filterStatus, setFilterStatus] = useState<StatusFilter>('active'); // デフォルトでOB/OG除外
     const [filterAttendance, setFilterAttendance] = useState<AttendanceStatus>('all'); // 出勤状態
     const [filterHasCardId, setFilterHasCardId] = useState<boolean | 'all'>('all'); // カードID有無
     const [showFilters, setShowFilters] = useState(false);
@@ -227,7 +228,12 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
             if (!matchesSearch) return false;
             
             // ステータスフィルター (中学生/高校生/OB/OG)
-            if (filterStatus !== 'all' && user.status !== filterStatus) return false;
+            if (filterStatus === 'active') {
+                // OB/OG(status === 2)を除外
+                if (user.status === 2) return false;
+            } else if (filterStatus !== 'all' && user.status !== filterStatus) {
+                return false;
+            }
             
             // 出勤状態フィルター
             if (filterAttendance !== 'all') {
@@ -315,11 +321,19 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label>ステータス</Label>
-                                <Select value={filterStatus === 'all' ? 'all' : String(filterStatus)} onValueChange={(val) => setFilterStatus(val === 'all' ? 'all' : Number(val) as UserStatus)}>
+                                <Select 
+                                    value={filterStatus === 'all' ? 'all' : filterStatus === 'active' ? 'active' : String(filterStatus)} 
+                                    onValueChange={(val) => {
+                                        if (val === 'all') setFilterStatus('all');
+                                        else if (val === 'active') setFilterStatus('active');
+                                        else setFilterStatus(Number(val) as UserStatus);
+                                    }}
+                                >
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="active">現役部員のみ</SelectItem>
                                         <SelectItem value="all">全て</SelectItem>
                                         <SelectItem value="0">中学生</SelectItem>
                                         <SelectItem value="1">高校生</SelectItem>
@@ -360,11 +374,11 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         
                         <div className="mt-4 flex justify-end">
                             <Button variant="ghost" size="sm" onClick={() => {
-                                setFilterStatus('all');
+                                setFilterStatus('active');
                                 setFilterAttendance('all');
                                 setFilterHasCardId('all');
                             }}>
-                                フィルターをクリア
+                                フィルターをリセット
                             </Button>
                         </div>
                     </Card>
