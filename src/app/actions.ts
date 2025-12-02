@@ -577,25 +577,39 @@ export async function deleteTeam(id: number) {
 export async function forceLogoutAll() {
     const supabase = await createSupabaseAdminClient();
     
-    const { data: currentlyIn, error: currentlyInError } = await (supabase as any)
-        .rpc('get_currently_in_user_ids');
+    // 今日の日付を取得
+    const now = new Date();
+    const todayDate = formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
+    
+    // 今日出勤した全ユーザーの出勤記録を取得
+    const { data: todayAttendances, error: attError } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('user_id, card_id, type, timestamp')
+        .eq('date', todayDate)
+        .order('timestamp', { ascending: false });
 
-    if (currentlyInError) {
-        console.error('Error fetching currently in users:', currentlyInError);
-        return { success: false, message: `DBエラー: ${currentlyInError.message}` };
+    if (attError) {
+        console.error('Error fetching today attendances:', attError);
+        return { success: false, message: `DBエラー: ${attError.message}` };
     }
     
-    const usersToLogOut = currentlyIn as {user_id: string, card_id: string}[];
+    // 各ユーザーの最新の出勤記録を取得し、'in'のユーザーのみを抽出
+    const userLatestMap = new Map<string, { user_id: string; card_id: string; type: string }>();
+    todayAttendances?.forEach(att => {
+        if (!userLatestMap.has(att.user_id)) {
+            userLatestMap.set(att.user_id, { user_id: att.user_id, card_id: att.card_id, type: att.type });
+        }
+    });
+    
+    const usersToLogOut = Array.from(userLatestMap.values()).filter(u => u.type === 'in');
 
     if (usersToLogOut.length === 0) {
         await supabase.schema('attendance').from('daily_logout_logs').insert({ affected_count: 0, status: 'success' });
         return { success: true, message: '現在活動中のユーザーはいません。', count: 0 };
     }
-    
-    const now = new Date();
-    const dateInJST = formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
 
-    const attendanceRecords = usersToLogOut.map(user => ({ user_id: user.user_id, card_id: user.card_id, type: 'out' as const, timestamp: now.toISOString(), date: dateInJST }));
+    const attendanceRecords = usersToLogOut.map(user => ({ user_id: user.user_id, card_id: user.card_id, type: 'out' as const, timestamp: now.toISOString(), date: todayDate }));
     const { error: insertError } = await supabase.schema('attendance').from('attendances').insert(attendanceRecords);
 
     if (insertError) {
@@ -883,22 +897,38 @@ export async function getOverallStats(days: number = 30) {
     const today = toZonedTime(new Date(), timeZone);
     const startDate = formatDate(subDays(today, days), 'yyyy-MM-dd');
     
+    // カードIDを持つユーザーのみ取得
+    const { data: usersWithCard } = await supabase
+        .schema('attendance')
+        .from('users')
+        .select('supabase_auth_user_id')
+        .not('card_id', 'is', null)
+        .neq('card_id', '');
+    
+    const userIdsWithCard = usersWithCard?.map(u => u.supabase_auth_user_id) || [];
+    
+    // カードIDを持つユーザーの今日の出勤者を取得
     const { data: todayAttendances, error: todayAttError } = await supabase
       .schema('attendance')
       .from('attendances')
       .select('user_id', { count: 'exact' })
       .eq('date', formatDate(today, 'yyyy-MM-dd'))
-      .eq('type', 'in');
+      .eq('type', 'in')
+      .in('user_id', userIdsWithCard.length > 0 ? userIdsWithCard : ['']);
 
     if (todayAttError) console.error('Error fetching today attendees:', todayAttError);
     const todayActiveUsers = todayAttendances ? new Set(todayAttendances.map(a => a.user_id)).size : 0;
     
-    // OB/OG（status === 2）を除外して現役部員のみカウント
-    const { count: totalMembers } = await supabase
+    // OB/OG（status === 2）を除外し、かつカードIDを持つ現役部員のみカウント
+    const { data: activeMembers } = await supabase
         .schema('member')
         .from('members')
-        .select('*', { count: 'exact', head: true })
-        .neq('status', 2);
+        .select('supabase_auth_user_id')
+        .neq('status', 2)
+        .is('deleted_at', null);
+    
+    const activeMemberIds = activeMembers?.map(m => m.supabase_auth_user_id) || [];
+    const totalMembers = activeMemberIds.filter(id => userIdsWithCard.includes(id)).length;
     
     const { data: distinctDates, error: distinctDatesError } = await supabase
         .schema('attendance')
