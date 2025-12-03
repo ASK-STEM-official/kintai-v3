@@ -243,6 +243,10 @@ export async function signInWithDiscord(formData?: FormData) {
     const supabase = await createSupabaseServerClient();
     const next = formData?.get('next') as string | undefined;
     
+    console.log('[AUTH SIGNIN] ========================================');
+    console.log('[AUTH SIGNIN] Timestamp:', new Date().toISOString());
+    console.log('[AUTH SIGNIN] Next parameter:', next);
+    
     // 登録ページから来た場合、nextパラメータをCookieに保存
     if (next) {
         const cookieStore = await cookies();
@@ -252,20 +256,34 @@ export async function signInWithDiscord(formData?: FormData) {
             maxAge: 600, // 10分
             path: '/'
         });
+        console.log('[AUTH SIGNIN] Saved auth_next cookie:', next);
     }
+    
+    const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`;
+    console.log('[AUTH SIGNIN] Redirect URL:', redirectTo);
     
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
-            redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+            redirectTo,
             scopes: 'identify',
         },
     });
 
     if (error) {
-        console.error('Sign in with Discord error:', error);
+        console.error('[AUTH SIGNIN] ❌ OAuth initiation failed');
+        console.error('[AUTH SIGNIN] Error name:', error.name);
+        console.error('[AUTH SIGNIN] Error message:', error.message);
+        console.error('[AUTH SIGNIN] Error status:', error.status);
+        console.error('[AUTH SIGNIN] Error code:', error.code);
+        console.error('[AUTH SIGNIN] Full error:', JSON.stringify(error, null, 2));
+        console.log('[AUTH SIGNIN] ========================================');
         return redirect('/login?error=Could not authenticate with Discord.');
     }
+
+    console.log('[AUTH SIGNIN] ✅ OAuth URL generated');
+    console.log('[AUTH SIGNIN] OAuth URL:', data.url);
+    console.log('[AUTH SIGNIN] ========================================');
 
     if (data.url) {
         redirect(data.url);
