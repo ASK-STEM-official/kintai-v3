@@ -28,15 +28,29 @@ export async function GET(request: Request) {
   console.log('[AUTH CALLBACK] Origin:', origin);
   console.log('[AUTH CALLBACK] Next redirect:', next);
   console.log('[AUTH CALLBACK] Code present:', !!code);
+  console.log('[AUTH CALLBACK] Error param:', errorParam);
+  console.log('[AUTH CALLBACK] Error description:', errorDescription);
   if (code) {
     console.log('[AUTH CALLBACK] Code (first 20 chars):', code.substring(0, 20) + '...');
   }
 
   // OAuthプロバイダーからのエラーをチェック
   if (errorParam) {
-    console.error('[AUTH CALLBACK] OAuth error from provider:', errorParam);
+    console.error('[AUTH CALLBACK] ❌ OAuth error from provider');
+    console.error('[AUTH CALLBACK] Error:', errorParam);
+    console.error('[AUTH CALLBACK] Error code:', searchParams.get('error_code'));
     console.error('[AUTH CALLBACK] Error description:', errorDescription);
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(errorDescription || errorParam)}`);
+    console.error('[AUTH CALLBACK] ========================================');
+    
+    // ユーザーに分かりやすいエラーメッセージを表示
+    let userMessage = '認証中にエラーが発生しました。';
+    if (errorDescription?.includes('Unable to exchange external code')) {
+      userMessage = '認証の処理中にエラーが発生しました。時間をおいて再度お試しください。改善しない場合は管理者にお問い合わせください。';
+    } else if (errorDescription) {
+      userMessage = errorDescription;
+    }
+    
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(userMessage)}`);
   }
 
   if (!code) {
