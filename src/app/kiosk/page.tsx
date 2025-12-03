@@ -37,6 +37,11 @@ const IdleScreen = memo(({ isOnline }: { isOnline: boolean | undefined }) => (
       <div className="text-gray-500 mt-8">
         新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
       </div>
+      <div className="mt-6 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+        <p className="text-yellow-300 text-lg">
+          📢 このシステムを知らない、もしくは「カードが未登録」と出た方は部長まで連絡してください
+        </p>
+      </div>
     </footer>
   </div>
 ));
