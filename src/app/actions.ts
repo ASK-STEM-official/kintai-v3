@@ -22,6 +22,28 @@ type UserWithTeam = Member & { teams: Team[] | null };
 const timeZone = 'Asia/Tokyo';
 
 export async function recordAttendance(cardId: string): Promise<{ success: boolean; message: string; user: { display_name: string | null; } | null; type: 'in' | 'out' | null; }> {
+  const TIMEOUT_MS = 10000; // 10秒タイムアウト
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('TIMEOUT')), TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      recordAttendanceInternal(cardId),
+      timeoutPromise
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'TIMEOUT') {
+      console.error(`[RECORD_ATTENDANCE] ❌ Timeout after ${TIMEOUT_MS}ms - Card ID: ${cardId.substring(0, 10)}...`);
+      return { success: false, message: 'サーバーの応答がタイムアウトしました。もう一度お試しください。', user: null, type: null };
+    }
+    console.error('[RECORD_ATTENDANCE] Unexpected error:', error);
+    return { success: false, message: '予期しないエラーが発生しました。', user: null, type: null };
+  }
+}
+
+async function recordAttendanceInternal(cardId: string): Promise<{ success: boolean; message: string; user: { display_name: string | null; } | null; type: 'in' | 'out' | null; }> {
   const startTime = Date.now();
   console.log(`[RECORD_ATTENDANCE] Start - Card ID: ${cardId.substring(0, 10)}...`);
 
