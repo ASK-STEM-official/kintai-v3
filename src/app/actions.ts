@@ -50,43 +50,33 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
   const userId = attendanceUser.supabase_auth_user_id;
 
-  const memberLookupStart = Date.now();
-  const { data: memberData } = await supabase
-    .schema('member')
-    .from('members')
-    .select('discord_uid')
-    .eq('supabase_auth_user_id', userId)
-    .single();
-  const memberLookupDuration = Date.now() - memberLookupStart;
-  console.log(`[RECORD_ATTENDANCE] Member lookup query: ${memberLookupDuration}ms`);
+  // 並列クエリ実行でレスポンス時間を最適化
+  const parallelStart = Date.now();
+  const [authUserResult, lastAttendanceResult] = await Promise.all([
+    // Auth user lookup（Discord名取得用）
+    supabase.auth.admin.getUserById(userId),
+    // Last attendance query
+    supabase
+      .schema('attendance')
+      .from('attendances')
+      .select('type')
+      .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  ]);
+  const parallelDuration = Date.now() - parallelStart;
+  console.log(`[RECORD_ATTENDANCE] Parallel queries (auth + last attendance): ${parallelDuration}ms`);
+
+  const { data: authUser } = authUserResult;
+  const { data: lastAttendance, error: lastAttendanceError } = lastAttendanceResult;
 
   let userDisplayName = '名無しさん';
-
-  // Discordのユーザー名を取得（本名取得をスキップしてレスポンスを高速化）
-  if (memberData?.discord_uid) {
-    const authStart = Date.now();
-    const { data: authUser } = await supabase.auth.admin.getUserById(userId);
-    const authDuration = Date.now() - authStart;
-    console.log(`[RECORD_ATTENDANCE] Auth user lookup: ${authDuration}ms`);
-
-    if (authUser?.user?.user_metadata?.full_name) {
-      userDisplayName = authUser.user.user_metadata.full_name;
-    } else if (authUser?.user?.user_metadata?.name) {
-      userDisplayName = authUser.user.user_metadata.name;
-    }
+  if (authUser?.user?.user_metadata?.full_name) {
+    userDisplayName = authUser.user.user_metadata.full_name;
+  } else if (authUser?.user?.user_metadata?.name) {
+    userDisplayName = authUser.user.user_metadata.name;
   }
-
-  const lastAttendanceStart = Date.now();
-  const { data: lastAttendance, error: lastAttendanceError } = await supabase
-    .schema('attendance')
-    .from('attendances')
-    .select('type')
-    .eq('user_id', userId)
-    .order('timestamp', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const lastAttendanceDuration = Date.now() - lastAttendanceStart;
-  console.log(`[RECORD_ATTENDANCE] Last attendance query: ${lastAttendanceDuration}ms`);
 
   if (lastAttendanceError) {
       console.error('Error fetching last attendance:', lastAttendanceError);
