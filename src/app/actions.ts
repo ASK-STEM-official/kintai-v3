@@ -25,16 +25,22 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   const startTime = Date.now();
   console.log(`[RECORD_ATTENDANCE] Start - Card ID: ${cardId.substring(0, 10)}...`);
 
+  const supabaseStart = Date.now();
   const supabase = await createSupabaseAdminClient();
+  const supabaseDuration = Date.now() - supabaseStart;
+  console.log(`[RECORD_ATTENDANCE] Supabase client creation: ${supabaseDuration}ms`);
 
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
 
+  const userLookupStart = Date.now();
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
     .select('supabase_auth_user_id, card_id')
     .eq('card_id', normalizedCardId)
     .single();
+  const userLookupDuration = Date.now() - userLookupStart;
+  console.log(`[RECORD_ATTENDANCE] User lookup query: ${userLookupDuration}ms`);
 
   if (attendanceUserError || !attendanceUser) {
     const duration = Date.now() - startTime;
@@ -44,12 +50,15 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
   const userId = attendanceUser.supabase_auth_user_id;
 
+  const memberLookupStart = Date.now();
   const { data: memberData } = await supabase
     .schema('member')
     .from('members')
     .select('discord_uid')
     .eq('supabase_auth_user_id', userId)
     .single();
+  const memberLookupDuration = Date.now() - memberLookupStart;
+  console.log(`[RECORD_ATTENDANCE] Member lookup query: ${memberLookupDuration}ms`);
 
   let userDisplayName = '名無しさん';
 
@@ -67,6 +76,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     }
   }
 
+  const lastAttendanceStart = Date.now();
   const { data: lastAttendance, error: lastAttendanceError } = await supabase
     .schema('attendance')
     .from('attendances')
@@ -75,6 +85,8 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     .order('timestamp', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const lastAttendanceDuration = Date.now() - lastAttendanceStart;
+  console.log(`[RECORD_ATTENDANCE] Last attendance query: ${lastAttendanceDuration}ms`);
 
   if (lastAttendanceError) {
       console.error('Error fetching last attendance:', lastAttendanceError);
@@ -86,6 +98,7 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   const attendanceType = lastAttendance?.type === 'in' ? 'out' : 'in';
   const now = new Date();
 
+  const insertStart = Date.now();
   const { error: insertError } = await supabase
     .schema('attendance')
     .from('attendances')
@@ -96,6 +109,8 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
       timestamp: now.toISOString(),
       date: formatInTimeZone(now, timeZone, 'yyyy-MM-dd')
     });
+  const insertDuration = Date.now() - insertStart;
+  console.log(`[RECORD_ATTENDANCE] Attendance insert: ${insertDuration}ms`);
 
   if (insertError) {
     console.error('Attendance insert error:', insertError);
@@ -107,7 +122,10 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   const totalDuration = Date.now() - startTime;
   console.log(`[RECORD_ATTENDANCE] Success - ${attendanceType} (${totalDuration}ms) - User: ${userDisplayName}`);
 
+  const revalidateStart = Date.now();
   revalidatePath('/dashboard/teams');
+  const revalidateDuration = Date.now() - revalidateStart;
+  console.log(`[RECORD_ATTENDANCE] Revalidate path: ${revalidateDuration}ms`);
   return {
     success: true,
     message: attendanceType === 'in' ? '出勤しました' : '退勤しました',
