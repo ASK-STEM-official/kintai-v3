@@ -22,8 +22,11 @@ type UserWithTeam = Member & { teams: Team[] | null };
 const timeZone = 'Asia/Tokyo';
 
 export async function recordAttendance(cardId: string): Promise<{ success: boolean; message: string; user: { display_name: string | null; } | null; type: 'in' | 'out' | null; }> {
+  const startTime = Date.now();
+  console.log(`[RECORD_ATTENDANCE] Start - Card ID: ${cardId.substring(0, 10)}...`);
+
   const supabase = await createSupabaseAdminClient();
-  
+
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
 
   const { data: attendanceUser, error: attendanceUserError } = await supabase
@@ -34,24 +37,29 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     .single();
 
   if (attendanceUserError || !attendanceUser) {
+    const duration = Date.now() - startTime;
+    console.log(`[RECORD_ATTENDANCE] Failed - Unregistered card (${duration}ms)`);
     return { success: false, message: '未登録のカードです。', user: null, type: null };
   }
 
   const userId = attendanceUser.supabase_auth_user_id;
-  
+
   const { data: memberData } = await supabase
     .schema('member')
     .from('members')
     .select('discord_uid')
     .eq('supabase_auth_user_id', userId)
     .single();
-  
+
   let userDisplayName = '名無しさん';
-  
+
   // Discordのユーザー名を取得（本名取得をスキップしてレスポンスを高速化）
   if (memberData?.discord_uid) {
-    // auth.usersテーブルからDiscordのユーザー情報を取得
+    const authStart = Date.now();
     const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+    const authDuration = Date.now() - authStart;
+    console.log(`[RECORD_ATTENDANCE] Auth user lookup: ${authDuration}ms`);
+
     if (authUser?.user?.user_metadata?.full_name) {
       userDisplayName = authUser.user.user_metadata.full_name;
     } else if (authUser?.user?.user_metadata?.name) {
@@ -70,6 +78,8 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
   if (lastAttendanceError) {
       console.error('Error fetching last attendance:', lastAttendanceError);
+      const duration = Date.now() - startTime;
+      console.log(`[RECORD_ATTENDANCE] Failed - Last attendance error (${duration}ms)`);
       return { success: false, message: '過去の打刻記録の取得中にエラーが発生しました。', user: null, type: null };
   }
 
@@ -79,9 +89,9 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   const { error: insertError } = await supabase
     .schema('attendance')
     .from('attendances')
-    .insert({ 
-      user_id: userId, 
-      type: attendanceType, 
+    .insert({
+      user_id: userId,
+      type: attendanceType,
       card_id: normalizedCardId,
       timestamp: now.toISOString(),
       date: formatInTimeZone(now, timeZone, 'yyyy-MM-dd')
@@ -89,12 +99,17 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
 
   if (insertError) {
     console.error('Attendance insert error:', insertError);
+    const duration = Date.now() - startTime;
+    console.log(`[RECORD_ATTENDANCE] Failed - Insert error (${duration}ms)`);
     return { success: false, message: '打刻処理中にエラーが発生しました。', user: null, type: null };
   }
-  
+
+  const totalDuration = Date.now() - startTime;
+  console.log(`[RECORD_ATTENDANCE] Success - ${attendanceType} (${totalDuration}ms) - User: ${userDisplayName}`);
+
   revalidatePath('/dashboard/teams');
-  return { 
-    success: true, 
+  return {
+    success: true,
     message: attendanceType === 'in' ? '出勤しました' : '退勤しました',
     user: { display_name: userDisplayName },
     type: attendanceType,
