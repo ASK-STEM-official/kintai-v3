@@ -31,7 +31,6 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   console.log(`[RECORD_ATTENDANCE] Supabase client creation: ${supabaseDuration}ms`);
 
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
-  console.log(`[RECORD_ATTENDANCE] Original cardId: "${cardId}", Normalized: "${normalizedCardId}"`);
 
   const userLookupStart = Date.now();
   const { data: attendanceUser, error: attendanceUserError } = await supabase
@@ -42,10 +41,6 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
     .single();
   const userLookupDuration = Date.now() - userLookupStart;
   console.log(`[RECORD_ATTENDANCE] User lookup query: ${userLookupDuration}ms`);
-  console.log(`[RECORD_ATTENDANCE] Query result - found: ${!!attendanceUser}, error: ${attendanceUserError?.message || 'none'}`);
-  if (attendanceUser) {
-    console.log(`[RECORD_ATTENDANCE] Found user with card_id: ${attendanceUser.card_id}`);
-  }
 
   if (attendanceUserError || !attendanceUser) {
     const duration = Date.now() - startTime;
