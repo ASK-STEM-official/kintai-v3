@@ -48,10 +48,14 @@ export async function recordAttendance(cardId: string): Promise<{ success: boole
   
   let userDisplayName = '名無しさん';
   
+  // Discordのユーザー名を取得（本名取得をスキップしてレスポンスを高速化）
   if (memberData?.discord_uid) {
-    const { data: nickname } = await fetchMemberNickname(memberData.discord_uid);
-    if (nickname) {
-      userDisplayName = nickname;
+    // auth.usersテーブルからDiscordのユーザー情報を取得
+    const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+    if (authUser?.user?.user_metadata?.full_name) {
+      userDisplayName = authUser.user.user_metadata.full_name;
+    } else if (authUser?.user?.user_metadata?.name) {
+      userDisplayName = authUser.user.user_metadata.name;
     }
   }
 
