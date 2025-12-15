@@ -15,6 +15,16 @@ type AttendanceType = 'in' | 'out' | null;
 
 const AUTO_RESET_DELAY = 5000;
 
+// --- Helper function to isolate submission logic ---
+
+async function processSubmission(submissionType: 'idle' | 'register', cardId: string) {
+  if (submissionType === 'register') {
+    return await createTempRegistration(cardId);
+  }
+  return await recordAttendance(cardId);
+}
+
+
 // --- Memoized Components for Performance ---
 
 const IdleScreen = memo(({ isOnline }: { isOnline: boolean | undefined }) => (
@@ -174,6 +184,7 @@ export default function KioskPage() {
   }, []);
 
   const resetToIdle = useCallback(() => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     setKioskState('idle');
     setInputValue('');
     setMessage('');
@@ -182,18 +193,18 @@ export default function KioskPage() {
     setAttendanceType(null);
   }, []);
 
-  const handleFormSubmit = useCallback(async (cardId: string) => {
-    if (!cardId.trim() || kioskState === 'processing') {
+  const handleFormSubmit = useCallback(async (submissionType: 'idle' | 'register', cardId: string) => {
+    if (!cardId.trim()) {
       setInputValue('');
       return;
     }
     
     setKioskState('processing');
-    const stateAtSubmission = kioskState;
-    setInputValue(''); 
-
-    if (stateAtSubmission === 'register') {
-      const result = await createTempRegistration(cardId);
+    setInputValue('');
+    
+    const result: any = await processSubmission(submissionType, cardId);
+    
+    if (submissionType === 'register') {
       if (result.success && result.token) {
         setQrToken(result.token);
         setQrExpiry(Date.now() + 30 * 60 * 1000);
@@ -203,8 +214,7 @@ export default function KioskPage() {
         setMessage(result.message);
         setSubMessage('');
       }
-    } else {
-      const result = await recordAttendance(cardId);
+    } else { // 'idle'
       if (result.success && result.user) {
         setKioskState('success');
         setAttendanceType(result.type);
@@ -216,7 +226,7 @@ export default function KioskPage() {
         setSubMessage('登録するには「/」キーを押してください');
       }
     }
-  }, [kioskState]);
+  }, []); // Dependencies are stable, preventing re-creation
 
   useEffect(() => {
     if (kioskState === 'success' || kioskState === 'error') {
@@ -230,25 +240,24 @@ export default function KioskPage() {
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (kioskState === 'processing' || (kioskState === 'qr' && e.key !== 'Escape')) {
+      if (kioskState === 'processing' || kioskState === 'loading' || (kioskState === 'qr' && e.key !== 'Escape')) {
         return;
       }
 
       if (e.key === 'Escape') {
-        if(resetTimerRef.current) clearTimeout(resetTimerRef.current);
         resetToIdle();
         return;
       }
       
       if (e.key === 'Enter') {
+        const submissionType = kioskState === 'register' ? 'register' : 'idle';
         if (inputValue.trim()) {
-            handleFormSubmit(inputValue);
+            handleFormSubmit(submissionType, inputValue);
         }
         return;
       }
       
       if (e.key === '/') {
-        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
         e.preventDefault();
         setKioskState('register');
         setMessage('新規カード登録');
@@ -288,7 +297,6 @@ export default function KioskPage() {
           { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
           (payload) => {
             if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
-              if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
               resetToIdle();
             }
           }
