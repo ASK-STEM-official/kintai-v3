@@ -287,16 +287,23 @@ export default function KioskPage() {
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
     updateOnlineStatus();
-    
+
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
+  useEffect(() => {
     let qrChannel: any;
-    if (kioskState === 'qr' && qrToken) {
+    if (qrToken) {
       qrChannel = supabase
         .channel(`kiosk-qr-channel-${qrToken}`)
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
           (payload) => {
-            if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
+            if ((payload.new.accessed_at || payload.new.is_used)) {
               resetToIdle();
             }
           }
@@ -304,11 +311,11 @@ export default function KioskPage() {
     }
     
     return () => {
-      window.removeEventListener('online', updateOnlineStatus);
-      window.removeEventListener('offline', updateOnlineStatus);
-      if (qrChannel) supabase.removeChannel(qrChannel);
+      if (qrChannel) {
+        supabase.removeChannel(qrChannel);
+      }
     };
-  }, [supabase, qrToken, kioskState, resetToIdle]);
+  }, [supabase, qrToken, resetToIdle]);
   
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
