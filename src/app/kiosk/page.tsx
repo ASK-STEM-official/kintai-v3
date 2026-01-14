@@ -280,7 +280,7 @@ export default function KioskPage() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [kioskState, inputValue]);
+  }, [kioskState, inputValue, handleFormSubmit, resetToIdle]);
   
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -296,7 +296,7 @@ export default function KioskPage() {
 
   useEffect(() => {
     let qrChannel: any;
-    if (qrToken) {
+    if (kioskState === 'qr' && qrToken) {
       qrChannel = supabase
         .channel(`kiosk-qr-channel-${qrToken}`)
         .on(
@@ -341,5 +341,3 @@ export default function KioskPage() {
     </div>
   );
 }
-
-    
