@@ -226,7 +226,7 @@ export default function KioskPage() {
         setSubMessage('登録するには「/」キーを押してください');
       }
     }
-  }, []); // Dependencies are stable, preventing re-creation
+  }, []);
 
   useEffect(() => {
     if (kioskState === 'success' || kioskState === 'error') {
@@ -280,7 +280,7 @@ export default function KioskPage() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [kioskState, resetToIdle, inputValue, handleFormSubmit]);
+  }, [kioskState, inputValue]);
   
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -303,7 +303,7 @@ export default function KioskPage() {
           'postgres_changes',
           { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
           (payload) => {
-            if ((payload.new.accessed_at || payload.new.is_used)) {
+            if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
               resetToIdle();
             }
           }
@@ -315,7 +315,7 @@ export default function KioskPage() {
         supabase.removeChannel(qrChannel);
       }
     };
-  }, [supabase, qrToken, resetToIdle]);
+  }, [supabase, qrToken, kioskState, resetToIdle]);
   
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
@@ -341,3 +341,5 @@ export default function KioskPage() {
     </div>
   );
 }
+
+    
