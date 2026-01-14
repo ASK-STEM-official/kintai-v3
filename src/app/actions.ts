@@ -147,6 +147,13 @@ async function recordAttendanceInternal(cardId: string): Promise<{ success: bool
 }
 
 
+const processSubmission = async (submissionType: 'idle' | 'register', cardId: string) => {
+    if (submissionType === 'register') {
+      return await createTempRegistration(cardId);
+    }
+    return await recordAttendance(cardId);
+  }
+
 export async function createTempRegistration(cardId: string): Promise<{ success: boolean; token?: string; message: string }> {
   const supabase = await createSupabaseAdminClient();
   const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
