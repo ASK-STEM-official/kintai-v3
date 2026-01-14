@@ -50,6 +50,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
     const searchParams = useSearchParams();
     const success = searchParams.get('success');
     const error = searchParams.get('error');
+    const newCardId = searchParams.get('newCardId');
     const router = useRouter();
 
     if (token === 'card-unregistered') {
@@ -83,7 +84,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
   
     // 成功またはすでに登録済みの場合は、is_usedチェックをスキップ
     if (success === 'true' || (session?.user && fullProfile?.attendance_user)) {
-        const cardId = fullProfile?.attendance_user?.card_id || tempReg?.card_id || '';
+        const cardId = newCardId || fullProfile?.attendance_user?.card_id || tempReg?.card_id || '';
         const discordUsername = session?.user?.user_metadata?.user_name || session?.user?.user_metadata?.full_name || '';
         const userName = displayName || '名無しさん';
         

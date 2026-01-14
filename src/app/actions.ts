@@ -253,26 +253,15 @@ export async function completeRegistration(formData: FormData) {
     return redirect(`/register/${token}?error=Session expired`);
   }
   
-  const attendanceUserData: TablesInsert<'attendance', 'users'> = {
-      supabase_auth_user_id: user.id,
-      card_id: tempReg.card_id
-  }
+  const newCardId = tempReg.card_id;
   
-  console.log('[DEBUG] About to upsert attendance user:', { 
-    supabase_auth_user_id: user.id, 
-    card_id: tempReg.card_id,
-    hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    serviceRoleKeyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20)
-  });
-  
-  // supabase_auth_user_id カラムに user_id を設定
   const { error: insertAttendanceUserError } = await adminSupabase
     .schema('attendance')
     .from('users')
     .upsert(
       { 
         supabase_auth_user_id: user.id,
-        card_id: tempReg.card_id 
+        card_id: newCardId
       }, 
       { onConflict: 'supabase_auth_user_id' }
     );
@@ -284,7 +273,8 @@ export async function completeRegistration(formData: FormData) {
   await adminSupabase.schema('attendance').from('temp_registrations').update({ is_used: true }).eq('id', tempReg.id);
 
   revalidatePath('/admin');
-  redirect(`/register/${token}?success=true`);
+  revalidatePath(`/register/${token}`, 'layout');
+  redirect(`/register/${token}?success=true&newCardId=${newCardId}`);
 }
 
 
@@ -1286,4 +1276,3 @@ export async function checkDiscordMembership(discordUid: string) {
         return { success: false, isInServer: false, message: 'Discordサーバーの確認に失敗しました。' };
     }
 }
-
