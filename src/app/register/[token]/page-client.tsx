@@ -1,3 +1,4 @@
+
 'use client'
 
 import { completeRegistration, signInWithDiscord } from '@/app/actions';
@@ -5,31 +6,30 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icons } from '@/components/icons';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import type { Tables } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 import { useFormStatus } from 'react-dom';
 import { FaDiscord } from 'react-icons/fa';
-import { useEffect } from 'react';
 
-function SubmitButton() {
+function SubmitButton({ isUpdate }: { isUpdate: boolean }) {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" className="w-full" size="lg" disabled={pending}>
-            {pending ? "登録中..." : "登録を完了する"}
+            {pending ? (isUpdate ? "更新中..." : "登録中...") : (isUpdate ? "カードを更新する" : "登録を完了する")}
         </Button>
     );
 }
 
-function RegisterForm({ token }: { token: string }) {
+function RegisterForm({ token, isUpdate }: { token: string, isUpdate: boolean }) {
   return (
     <form action={completeRegistration} className="space-y-4">
       <input type="hidden" name="token" value={token} />
        <div className='text-sm text-muted-foreground text-center'>
-        ユーザー情報を確認しました。下のボタンを押して、このカードの登録を完了してください。
+        ユーザー情報を確認しました。下のボタンを押して、このカードの{isUpdate ? "更新" : "登録"}を完了してください。
       </div>
-      <SubmitButton />
+      <SubmitButton isUpdate={isUpdate} />
     </form>
   );
 }
@@ -39,19 +39,25 @@ type FullProfile = Tables<'member', 'members'> & {
     teams: { name: string } | null,
 };
 
-export default function RegisterPageClient({ token, tempReg, teams, session, fullProfile, displayName }: { 
+export default function RegisterPageClient({ 
+    token, 
+    tempReg, 
+    session, 
+    displayName,
+    existingCardId,
+}: { 
     token: string,
     tempReg?: Tables<'attendance', 'temp_registrations'> | null,
-    teams?: Tables<'member', 'teams'>[],
     session?: any,
-    fullProfile?: FullProfile | null,
-    displayName?: string | null
+    displayName?: string | null,
+    existingCardId?: string | null,
 }) {
     const searchParams = useSearchParams();
     const success = searchParams.get('success');
     const error = searchParams.get('error');
     const newCardId = searchParams.get('newCardId');
-    const router = useRouter();
+
+    const isUpdateFlow = !!existingCardId && existingCardId !== tempReg?.card_id;
 
     if (token === 'card-unregistered') {
         return (
@@ -82,9 +88,8 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
   
-    // Registration success screen
     if (success === 'true') {
-        const cardId = newCardId || fullProfile?.attendance_user?.card_id || tempReg?.card_id || '';
+        const cardId = newCardId || tempReg?.card_id || '';
         const discordUsername = session?.user?.user_metadata?.user_name || session?.user?.user_metadata?.full_name || '';
         const userName = displayName || '名無しさん';
         
@@ -93,7 +98,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                 <Card className="w-full max-w-md">
                     <CardHeader className="items-center text-center">
                         <Icons.CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
-                        <CardTitle className="text-2xl">登録が完了しました!</CardTitle>
+                        <CardTitle className="text-2xl">{isUpdateFlow ? "カードが更新されました！" : "登録が完了しました!"}</CardTitle>
                         <CardDescription>ダッシュボードへ移動できます</CardDescription>
                     </CardHeader>
                     <CardContent className='space-y-4'>
@@ -109,7 +114,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className='font-semibold'>カードID</span>
-                                    <span className='font-mono text-sm'>{cardId.slice(0,3)}...{cardId.slice(-4)}</span>
+                                    <span className='font-mono text-sm'>{cardId}</span>
                                 </div>
                            </CardContent>
                         </Card>
@@ -120,7 +125,6 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
     
-    // Invalid temporary registration (used, expired, or not found)
     if (!tempReg || tempReg.is_used || new Date(tempReg.expires_at) < new Date()) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -140,12 +144,11 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
 
-    // Main registration flow screen
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-2xl"><Icons.UserPlus /> カード登録</CardTitle>
+                    <CardTitle className="flex items-center gap-2 text-2xl"><Icons.UserPlus /> {isUpdateFlow ? "カードの更新" : "カード登録"}</CardTitle>
                     <CardDescription>QRコードスキャンありがとうございます。Discordで認証して登録を完了してください。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -171,9 +174,15 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                                 </div>
                             )}
                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">カードID:</span>
+                                <span className="text-muted-foreground">新しいカードID:</span>
                                 <span className="font-mono font-medium">{tempReg.card_id}</span>
                             </div>
+                            {isUpdateFlow && (
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">現在のカードID:</span>
+                                    <span className="font-mono font-medium text-destructive line-through">{existingCardId}</span>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                     
@@ -182,11 +191,11 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
                             <input type="hidden" name="next" value={`/register/${token}`} />
                             <Button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white" size="lg">
                                 <FaDiscord className="w-5 h-5 mr-2" />
-                                Discordで認証して登録する
+                                Discordで認証して{isUpdateFlow ? "更新" : "登録"}する
                             </Button>
                         </form>
                     ) : (
-                        <RegisterForm token={token} />
+                        <RegisterForm token={token} isUpdate={isUpdateFlow} />
                     )}
                 </CardContent>
             </Card>
