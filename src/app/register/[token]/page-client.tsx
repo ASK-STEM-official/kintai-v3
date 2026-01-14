@@ -82,8 +82,8 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
   
-    // 成功またはすでに登録済みの場合は、is_usedチェックをスキップ
-    if (success === 'true' || (session?.user && fullProfile?.attendance_user)) {
+    // Registration success screen
+    if (success === 'true') {
         const cardId = newCardId || fullProfile?.attendance_user?.card_id || tempReg?.card_id || '';
         const discordUsername = session?.user?.user_metadata?.user_name || session?.user?.user_metadata?.full_name || '';
         const userName = displayName || '名無しさん';
@@ -120,7 +120,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
     
-    // tempRegが無効な場合のエラー表示
+    // Invalid temporary registration (used, expired, or not found)
     if (!tempReg || tempReg.is_used || new Date(tempReg.expires_at) < new Date()) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -140,6 +140,7 @@ export default function RegisterPageClient({ token, tempReg, teams, session, ful
         );
     }
 
+    // Main registration flow screen
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
             <Card className="w-full max-w-md">
