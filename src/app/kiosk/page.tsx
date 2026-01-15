@@ -202,29 +202,36 @@ export default function KioskPage() {
     setKioskState('processing');
     setInputValue('');
     
-    const result: any = await processSubmission(submissionType, cardId);
-    
-    if (submissionType === 'register') {
-      if (result.success && result.token) {
-        setQrToken(result.token);
-        setQrExpiry(Date.now() + 30 * 60 * 1000);
-        setKioskState('qr');
-      } else {
+    try {
+        const result: any = await processSubmission(submissionType, cardId);
+        
+        if (submissionType === 'register') {
+          if (result.success && result.token) {
+            setQrToken(result.token);
+            setQrExpiry(Date.now() + 30 * 60 * 1000);
+            setKioskState('qr');
+          } else {
+            setKioskState('error');
+            setMessage(result.message);
+            setSubMessage('');
+          }
+        } else { // 'idle'
+          if (result.success && result.user) {
+            setKioskState('success');
+            setAttendanceType(result.type);
+            setMessage(`${result.user.display_name}`);
+            setSubMessage(result.message);
+          } else {
+            setKioskState('error');
+            setMessage(result.message);
+            setSubMessage('登録するには「/」キーを押してください');
+          }
+        }
+    } catch (error) {
+        console.error("Submission failed:", error);
         setKioskState('error');
-        setMessage(result.message);
-        setSubMessage('');
-      }
-    } else { // 'idle'
-      if (result.success && result.user) {
-        setKioskState('success');
-        setAttendanceType(result.type);
-        setMessage(`${result.user.display_name}`);
-        setSubMessage(result.message);
-      } else {
-        setKioskState('error');
-        setMessage(result.message);
-        setSubMessage('登録するには「/」キーを押してください');
-      }
+        setMessage('サーバーとの通信に失敗しました。');
+        setSubMessage('ネットワーク接続を確認して、もう一度お試しください。');
     }
   }, []);
 
@@ -296,14 +303,14 @@ export default function KioskPage() {
 
   useEffect(() => {
     let qrChannel: any;
-    if (kioskState === 'qr' && qrToken) {
+    if (qrToken) {
       qrChannel = supabase
         .channel(`kiosk-qr-channel-${qrToken}`)
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
           (payload) => {
-            if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
+            if ((payload.new.accessed_at || payload.new.is_used)) {
               resetToIdle();
             }
           }
@@ -315,7 +322,7 @@ export default function KioskPage() {
         supabase.removeChannel(qrChannel);
       }
     };
-  }, [supabase, qrToken, kioskState, resetToIdle]);
+  }, [supabase, qrToken, resetToIdle]);
   
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
