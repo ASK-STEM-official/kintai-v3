@@ -34,7 +34,7 @@ async function processSubmission(submissionType: 'idle' | 'register', cardId: st
 const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
   return (
     <div className="font-mono text-2xl text-gray-400 text-right">
-      {wbgt !== null ? `${wbgt.toFixed(1)}°C` : ''}
+      {wbgt !== null ? `WBGT: ${wbgt.toFixed(1)}°C` : ''}
     </div>
   );
 });
