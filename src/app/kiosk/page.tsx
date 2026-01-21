@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { recordAttendance, createTempRegistration } from '@/app/actions';
 import Clock from '@/components/kiosk/Clock';
-import { Bell, LogIn, LogOut, XCircle, UserPlus, Wifi, WifiOff, Copy } from 'lucide-react';
+import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -32,26 +32,38 @@ async function processSubmission(submissionType: 'idle' | 'register', cardId: st
 // --- Memoized Components for Performance ---
 
 const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
+  if (wbgt === null) {
+    return (
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-gray-500/20 text-gray-300">
+            <span>WBGT: --.-°C</span>
+        </div>
+    );
+  }
+
+  const getWbgtColor = (value: number) => {
+    if (value >= 28) return 'bg-red-500/20 text-red-300'; // 厳重警戒以上
+    if (value >= 25) return 'bg-orange-500/20 text-orange-300'; // 警戒
+    if (value >= 21) return 'bg-yellow-500/20 text-yellow-300'; // 注意
+    return 'bg-green-500/20 text-green-300'; // ほぼ安全
+  };
+
+  const colorClass = getWbgtColor(wbgt);
+
   return (
-    <div className="font-mono text-2xl text-gray-400 text-right">
-      {wbgt !== null ? `WBGT: ${wbgt.toFixed(1)}°C` : ''}
+    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${colorClass}`}>
+      <Thermometer size={16} />
+      <span>{`WBGT: ${wbgt.toFixed(1)}°C`}</span>
     </div>
   );
 });
 WbgtDisplay.displayName = 'WbgtDisplay';
 
 
-const IdleScreen = memo(({ isOnline, wbgtData }: { isOnline: boolean | undefined, wbgtData: WbgtData }) => (
+const IdleScreen = memo(({ wbgtData }: { wbgtData: WbgtData }) => (
   <div className="flex flex-col h-full w-full justify-between p-6">
     <header className="w-full flex justify-between items-start text-xl">
       <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
       <div className="flex flex-col items-end gap-2">
-        {isOnline !== undefined && (
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
-            {isOnline ? <Wifi size={16}/> : <WifiOff size={16}/>}
-            <span>{isOnline ? 'オンライン' : 'オフライン'}</span>
-          </div>
-        )}
         <WbgtDisplay wbgt={wbgtData.wbgt} />
       </div>
     </header>
@@ -190,7 +202,6 @@ export default function KioskPage() {
   const [inputValue, setInputValue] = useState('');
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrExpiry, setQrExpiry] = useState<number>(0);
-  const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
   const [wbgtData, setWbgtData] = useState<WbgtData>({ wbgt: null, timestamp: null });
   
@@ -308,18 +319,6 @@ export default function KioskPage() {
   }, [kioskState, inputValue, handleFormSubmit, resetToIdle]);
   
   useEffect(() => {
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
-    window.addEventListener('online', updateOnlineStatus);
-    window.addEventListener('offline', updateOnlineStatus);
-    updateOnlineStatus();
-
-    return () => {
-      window.removeEventListener('online', updateOnlineStatus);
-      window.removeEventListener('offline', updateOnlineStatus);
-    };
-  }, []);
-
-  useEffect(() => {
     const fetchWbgt = async () => {
       try {
         const response = await fetch('https://stem-weather.vercel.app/api/wbgt');
@@ -360,13 +359,13 @@ export default function KioskPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, qrToken, kioskState, resetToIdle]);
+  }, [supabase, qrToken, resetToIdle, kioskState]);
   
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
       <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
-          {kioskState === 'idle' && <IdleScreen isOnline={isOnline} wbgtData={wbgtData} />}
+          {kioskState === 'idle' && <IdleScreen wbgtData={wbgtData} />}
           {kioskState === 'success' && <SuccessScreen message={message} subMessage={subMessage} attendanceType={attendanceType} />}
           {kioskState === 'error' && <ErrorScreen message={message} subMessage={subMessage} />}
           {kioskState === 'register' && <RegisterScreen message={message} subMessage={subMessage} />}
