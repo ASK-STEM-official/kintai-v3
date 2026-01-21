@@ -13,6 +13,11 @@ import { useToast } from '@/hooks/use-toast';
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
 type AttendanceType = 'in' | 'out' | null;
 
+interface WbgtData {
+  wbgt: number | null;
+  timestamp: string | null;
+}
+
 const AUTO_RESET_DELAY = 5000;
 
 // --- Helper function to isolate submission logic ---
@@ -24,10 +29,34 @@ async function processSubmission(submissionType: 'idle' | 'register', cardId: st
   return await recordAttendance(cardId);
 }
 
-
 // --- Memoized Components for Performance ---
 
-const IdleScreen = memo(({ isOnline }: { isOnline: boolean | undefined }) => (
+const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
+  const getWbgtInfo = (value: number | null) => {
+    if (value === null) return { label: '暑さ指数', color: 'text-gray-400 bg-gray-800/50 border-gray-700' };
+    if (value >= 31) return { label: '危険', color: 'text-red-400 bg-red-900/50 border-red-500/50' };
+    if (value >= 28) return { label: '厳重警戒', color: 'text-orange-400 bg-orange-900/50 border-orange-500/50' };
+    if (value >= 25) return { label: '警戒', color: 'text-yellow-400 bg-yellow-900/50 border-yellow-500/50' };
+    if (value >= 21) return { label: '注意', color: 'text-blue-400 bg-blue-900/50 border-blue-500/50' };
+    return { label: 'ほぼ安全', color: 'text-green-400 bg-green-900/50 border-green-500/50' };
+  };
+
+  const { label, color } = getWbgtInfo(wbgt);
+
+  return (
+    <div className={`text-center p-3 rounded-lg border transition-colors duration-500 ${color} w-48`}>
+      <span className="text-sm font-semibold">{label}</span>
+      <p className="text-3xl font-bold font-mono tracking-wider">
+        {wbgt !== null ? wbgt.toFixed(1) : '--.-'}
+      </p>
+      <p className="text-xs text-gray-400">WBGT (暑さ指数)</p>
+    </div>
+  );
+});
+WbgtDisplay.displayName = 'WbgtDisplay';
+
+
+const IdleScreen = memo(({ isOnline, wbgtData }: { isOnline: boolean | undefined, wbgtData: WbgtData }) => (
   <div className="flex flex-col h-full w-full justify-between p-6">
     <header className="w-full flex justify-between items-center text-xl">
       <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
@@ -38,8 +67,9 @@ const IdleScreen = memo(({ isOnline }: { isOnline: boolean | undefined }) => (
         </div>
       )}
     </header>
-    <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4">
+    <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4 space-y-8">
       <Clock />
+      <WbgtDisplay wbgt={wbgtData.wbgt} />
     </div>
     <footer className="w-full text-center">
       <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
@@ -175,6 +205,7 @@ export default function KioskPage() {
   const [qrExpiry, setQrExpiry] = useState<number>(0);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
+  const [wbgtData, setWbgtData] = useState<WbgtData>({ wbgt: null, timestamp: null });
   
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -302,33 +333,53 @@ export default function KioskPage() {
   }, []);
 
   useEffect(() => {
-    let qrChannel: any;
-    if (qrToken) {
-      qrChannel = supabase
-        .channel(`kiosk-qr-channel-${qrToken}`)
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
-          (payload) => {
-            if ((payload.new.accessed_at || payload.new.is_used)) {
-              resetToIdle();
-            }
-          }
-        ).subscribe();
-    }
-    
-    return () => {
-      if (qrChannel) {
-        supabase.removeChannel(qrChannel);
+    const fetchWbgt = async () => {
+      try {
+        const response = await fetch('https://stem-weather.vercel.app/api/wbgt');
+        if (!response.ok) {
+          console.error('Failed to fetch WBGT data, status:', response.status);
+          return;
+        }
+        const data = await response.json();
+        if (data.wbgt !== undefined) {
+          setWbgtData({ wbgt: data.wbgt, timestamp: data.timestamp });
+        }
+      } catch (error) {
+        console.error('Error fetching WBGT data:', error);
       }
     };
-  }, [supabase, qrToken, resetToIdle]);
+
+    fetchWbgt(); // Fetch on initial load
+    const intervalId = setInterval(fetchWbgt, 30 * 60 * 1000); // Fetch every 30 minutes
+
+    return () => clearInterval(intervalId); // Cleanup on unmount
+  }, []);
+
+  useEffect(() => {
+    if (!qrToken) return;
+
+    const channel = supabase
+      .channel(`kiosk-qr-channel-${qrToken}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
+        (payload) => {
+          if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
+            resetToIdle();
+          }
+        }
+      ).subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, qrToken, kioskState, resetToIdle]);
   
   return (
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
       <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
-          {kioskState === 'idle' && <IdleScreen isOnline={isOnline} />}
+          {kioskState === 'idle' && <IdleScreen isOnline={isOnline} wbgtData={wbgtData} />}
           {kioskState === 'success' && <SuccessScreen message={message} subMessage={subMessage} attendanceType={attendanceType} />}
           {kioskState === 'error' && <ErrorScreen message={message} subMessage={subMessage} />}
           {kioskState === 'register' && <RegisterScreen message={message} subMessage={subMessage} />}
