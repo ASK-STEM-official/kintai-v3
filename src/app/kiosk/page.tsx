@@ -32,24 +32,9 @@ async function processSubmission(submissionType: 'idle' | 'register', cardId: st
 // --- Memoized Components for Performance ---
 
 const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
-  const getWbgtInfo = (value: number | null) => {
-    if (value === null) return { label: '暑さ指数', color: 'text-gray-400 bg-gray-800/50 border-gray-700' };
-    if (value >= 31) return { label: '危険', color: 'text-red-400 bg-red-900/50 border-red-500/50' };
-    if (value >= 28) return { label: '厳重警戒', color: 'text-orange-400 bg-orange-900/50 border-orange-500/50' };
-    if (value >= 25) return { label: '警戒', color: 'text-yellow-400 bg-yellow-900/50 border-yellow-500/50' };
-    if (value >= 21) return { label: '注意', color: 'text-blue-400 bg-blue-900/50 border-blue-500/50' };
-    return { label: 'ほぼ安全', color: 'text-green-400 bg-green-900/50 border-green-500/50' };
-  };
-
-  const { label, color } = getWbgtInfo(wbgt);
-
   return (
-    <div className={`text-center p-3 rounded-lg border transition-colors duration-500 ${color} w-48`}>
-      <span className="text-sm font-semibold">{label}</span>
-      <p className="text-3xl font-bold font-mono tracking-wider">
-        {wbgt !== null ? wbgt.toFixed(1) : '--.-'}
-      </p>
-      <p className="text-xs text-gray-400">WBGT (暑さ指数)</p>
+    <div className="font-mono text-2xl text-gray-400 text-right">
+      {wbgt !== null ? `${wbgt.toFixed(1)}°C` : ''}
     </div>
   );
 });
@@ -58,18 +43,20 @@ WbgtDisplay.displayName = 'WbgtDisplay';
 
 const IdleScreen = memo(({ isOnline, wbgtData }: { isOnline: boolean | undefined, wbgtData: WbgtData }) => (
   <div className="flex flex-col h-full w-full justify-between p-6">
-    <header className="w-full flex justify-between items-center text-xl">
+    <header className="w-full flex justify-between items-start text-xl">
       <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
-      {isOnline !== undefined && (
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
-          {isOnline ? <Wifi size={16}/> : <WifiOff size={16}/>}
-          <span>{isOnline ? 'オンライン' : 'オフライン'}</span>
-        </div>
-      )}
+      <div className="flex flex-col items-end gap-2">
+        {isOnline !== undefined && (
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isOnline ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+            {isOnline ? <Wifi size={16}/> : <WifiOff size={16}/>}
+            <span>{isOnline ? 'オンライン' : 'オフライン'}</span>
+          </div>
+        )}
+        <WbgtDisplay wbgt={wbgtData.wbgt} />
+      </div>
     </header>
     <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4 space-y-8">
       <Clock />
-      <WbgtDisplay wbgt={wbgtData.wbgt} />
     </div>
     <footer className="w-full text-center">
       <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
