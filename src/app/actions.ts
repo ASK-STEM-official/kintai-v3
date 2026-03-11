@@ -59,7 +59,7 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('supabase_auth_user_id, card_id')
+    .select('supabase_auth_user_id, member:member_members!inner(display_name)')
     .eq('card_id', normalizedCardId)
     .single();
   const userLookupDuration = Date.now() - userLookupStart;
@@ -72,34 +72,19 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   }
 
   const userId = attendanceUser.supabase_auth_user_id;
+  const userDisplayName = attendanceUser.member?.display_name || '名無しさん';
 
-  // 並列クエリ実行でレスポンス時間を最適化
-  const parallelStart = Date.now();
-  const [authUserResult, lastAttendanceResult] = await Promise.all([
-    // Auth user lookup（Discord名取得用）
-    supabase.auth.admin.getUserById(userId),
-    // Last attendance query
-    supabase
-      .schema('attendance')
-      .from('attendances')
-      .select('type')
-      .eq('user_id', userId)
-      .order('timestamp', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-  ]);
-  const parallelDuration = Date.now() - parallelStart;
-  console.log(`[RECORD_ATTENDANCE:${traceId}] Parallel queries (auth + last attendance): ${parallelDuration}ms`);
-
-  const { data: authUser } = authUserResult;
-  const { data: lastAttendance, error: lastAttendanceError } = lastAttendanceResult;
-
-  let userDisplayName = '名無しさん';
-  if (authUser?.user?.user_metadata?.full_name) {
-    userDisplayName = authUser.user.user_metadata.full_name;
-  } else if (authUser?.user?.user_metadata?.name) {
-    userDisplayName = authUser.user.user_metadata.name;
-  }
+  const lastAttendanceStart = Date.now();
+  const { data: lastAttendance, error: lastAttendanceError } = await supabase
+    .schema('attendance')
+    .from('attendances')
+    .select('type')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastAttendanceDuration = Date.now() - lastAttendanceStart;
+  console.log(`[RECORD_ATTENDANCE:${traceId}] Last attendance query: ${lastAttendanceDuration}ms`);
 
   if (lastAttendanceError) {
       console.error(`[RECORD_ATTENDANCE:${traceId}] Error fetching last attendance:`, lastAttendanceError);
