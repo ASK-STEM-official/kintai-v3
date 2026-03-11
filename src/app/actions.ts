@@ -53,13 +53,13 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   const supabaseDuration = Date.now() - supabaseStart;
   console.log(`[RECORD_ATTENDANCE:${traceId}] Supabase client creation: ${supabaseDuration}ms`);
 
-  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+  const normalizedCardId = cardId.trim().replace(/:/g, '').toLowerCase();
 
   const userLookupStart = Date.now();
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('supabase_auth_user_id, member:member_members!inner(display_name)')
+    .select('supabase_auth_user_id, display_name')
     .eq('card_id', normalizedCardId)
     .single();
   const userLookupDuration = Date.now() - userLookupStart;
@@ -72,7 +72,34 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   }
 
   const userId = attendanceUser.supabase_auth_user_id;
-  const userDisplayName = attendanceUser.member?.display_name || '名無しさん';
+  let userDisplayName = attendanceUser.display_name || '名無しさん';
+  if (!attendanceUser.display_name) {
+    const memberLookupStart = Date.now();
+    const { data: memberUser, error: memberError } = await supabase
+      .schema('member')
+      .from('members')
+      .select('display_name')
+      .eq('supabase_auth_user_id', userId)
+      .single();
+    const memberLookupDuration = Date.now() - memberLookupStart;
+    console.log(`[RECORD_ATTENDANCE:${traceId}] Member lookup query: ${memberLookupDuration}ms`);
+    if (memberError) {
+      console.warn(`[RECORD_ATTENDANCE:${traceId}] Member lookup error:`, memberError);
+    } else if (memberUser?.display_name) {
+      userDisplayName = memberUser.display_name;
+      const cacheUpdateStart = Date.now();
+      const { error: cacheUpdateError } = await supabase
+        .schema('attendance')
+        .from('users')
+        .update({ display_name: userDisplayName })
+        .eq('supabase_auth_user_id', userId);
+      const cacheUpdateDuration = Date.now() - cacheUpdateStart;
+      console.log(`[RECORD_ATTENDANCE:${traceId}] Cache display_name update: ${cacheUpdateDuration}ms`);
+      if (cacheUpdateError) {
+        console.warn(`[RECORD_ATTENDANCE:${traceId}] Cache update error:`, cacheUpdateError);
+      }
+    }
+  }
 
   const lastAttendanceStart = Date.now();
   const { data: lastAttendance, error: lastAttendanceError } = await supabase
@@ -144,7 +171,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
   const traceId = randomUUID();
   const startTime = Date.now();
   const supabase = await createSupabaseAdminClient();
-  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+  const normalizedCardId = cardId.trim().replace(/:/g, '').toLowerCase();
   console.log(`[CREATE_TEMP_REG:${traceId}] Start - Card ID: ${cardId.substring(0, 10)}...`);
   
   const existingStart = Date.now();
@@ -225,7 +252,7 @@ export async function completeRegistration(formData: FormData) {
   const { data: member, error: memberError } = await adminSupabase
     .schema('member')
     .from('members')
-    .select('supabase_auth_user_id')
+    .select('supabase_auth_user_id, display_name')
     .eq('supabase_auth_user_id', user.id)
     .single();
 
@@ -265,7 +292,8 @@ export async function completeRegistration(formData: FormData) {
     .upsert(
       { 
         supabase_auth_user_id: user.id,
-        card_id: newCardId
+        card_id: newCardId,
+        display_name: member.display_name
       }, 
       { onConflict: 'supabase_auth_user_id' }
     );

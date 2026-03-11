@@ -103,18 +103,21 @@ export type Database = {
         Row: {
           card_id: string
           created_at: string
+          display_name: string | null
           supabase_auth_user_id: string
           updated_at: string
         }
         Insert: {
           card_id: string
           created_at?: string
+          display_name?: string | null
           supabase_auth_user_id: string
           updated_at?: string
         }
         Update: {
           card_id?: string
           created_at?: string
+          display_name?: string | null
           supabase_auth_user_id?: string
           updated_at?: string
         }
