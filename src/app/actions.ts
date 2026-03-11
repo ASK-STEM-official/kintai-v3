@@ -59,7 +59,7 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('supabase_auth_user_id, member:member_members!inner(display_name)')
+    .select('supabase_auth_user_id, member:member_members(display_name)')
     .eq('card_id', normalizedCardId)
     .single();
   const userLookupDuration = Date.now() - userLookupStart;
