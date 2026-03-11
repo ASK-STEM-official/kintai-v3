@@ -53,13 +53,14 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   const supabaseDuration = Date.now() - supabaseStart;
   console.log(`[RECORD_ATTENDANCE:${traceId}] Supabase client creation: ${supabaseDuration}ms`);
 
-  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+  const normalizedCardId = cardId.trim().replace(/:/g, '').toLowerCase();
+  const cardIdSuffix = normalizedCardId.slice(-6);
 
   const userLookupStart = Date.now();
   const { data: attendanceUser, error: attendanceUserError } = await supabase
     .schema('attendance')
     .from('users')
-    .select('supabase_auth_user_id, member:member_members!inner(display_name)')
+    .select('supabase_auth_user_id, member:member_members(display_name)')
     .eq('card_id', normalizedCardId)
     .single();
   const userLookupDuration = Date.now() - userLookupStart;
@@ -67,7 +68,29 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
 
   if (attendanceUserError || !attendanceUser) {
     const duration = Date.now() - startTime;
-    console.log(`[RECORD_ATTENDANCE:${traceId}] Failed - Unregistered card (${duration}ms)`);
+    console.log(`[RECORD_ATTENDANCE:${traceId}] Failed - Unregistered card (${duration}ms, len=${normalizedCardId.length}, tail=${cardIdSuffix})`);
+    if (attendanceUserError) {
+      console.warn(`[RECORD_ATTENDANCE:${traceId}] User lookup error:`, attendanceUserError);
+    }
+    if (cardIdSuffix.length >= 4) {
+      const { data: suffixMatches, error: suffixError } = await supabase
+        .schema('attendance')
+        .from('users')
+        .select('card_id')
+        .ilike('card_id', `%${cardIdSuffix}`)
+        .limit(3);
+      if (suffixError) {
+        console.warn(`[RECORD_ATTENDANCE:${traceId}] Suffix lookup error:`, suffixError);
+      } else if (suffixMatches && suffixMatches.length > 0) {
+        const masked = suffixMatches.map((row) => {
+          const value = row.card_id || '';
+          return `len=${value.length}, tail=${value.slice(-6)}`;
+        });
+        console.warn(`[RECORD_ATTENDANCE:${traceId}] Suffix matches: ${masked.join(' | ')}`);
+      } else {
+        console.warn(`[RECORD_ATTENDANCE:${traceId}] Suffix matches: none`);
+      }
+    }
     return { success: false, message: '未登録のカードです。', user: null, type: null };
   }
 
@@ -144,7 +167,7 @@ export async function createTempRegistration(cardId: string): Promise<{ success:
   const traceId = randomUUID();
   const startTime = Date.now();
   const supabase = await createSupabaseAdminClient();
-  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+  const normalizedCardId = cardId.trim().replace(/:/g, '').toLowerCase();
   console.log(`[CREATE_TEMP_REG:${traceId}] Start - Card ID: ${cardId.substring(0, 10)}...`);
   
   const existingStart = Date.now();
