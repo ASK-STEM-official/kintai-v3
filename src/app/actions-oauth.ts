@@ -2,12 +2,12 @@
 
 import { generateCodeVerifier, generateCodeChallenge, generateState, buildAuthorizationUrl } from '@/lib/oauth/pkce';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 
-export async function signInWithSTEM() {
-  const authEndpoint = process.env.NEXT_PUBLIC_STEM_OAUTH_URL || 'http://localhost:3000/oauth/authorize';
+export async function signInWithSTEM(): Promise<{ url: string }> {
+  const oauthBaseUrl = (process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || 'http://localhost:3000/oauth').replace(/\/$/, '');
   const clientId = process.env.STEM_OAUTH_CLIENT_ID!;
-  const redirectUri = process.env.NEXT_PUBLIC_STEM_OAUTH_REDIRECT_URI!;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001').replace(/\/$/, '');
+  const redirectUri = `${appUrl}/auth/oauth/callback`;
 
   // PKCE パラメータを生成
   const codeVerifier = generateCodeVerifier();
@@ -20,7 +20,7 @@ export async function signInWithSTEM() {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 10, // 10分
+    maxAge: 60 * 10,
     path: '/',
   });
   
@@ -32,14 +32,13 @@ export async function signInWithSTEM() {
     path: '/',
   });
 
-  // OAuth 認可URLを構築してリダイレクト
   const authUrl = buildAuthorizationUrl({
-    authorizationEndpoint: authEndpoint,
+    authorizationEndpoint: `${oauthBaseUrl}/authorize`,
     clientId,
     redirectUri,
     codeChallenge,
     state,
   });
 
-  redirect(authUrl);
+  return { url: authUrl };
 }

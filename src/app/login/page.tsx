@@ -1,6 +1,7 @@
 
 'use client'
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { signInWithSTEM } from "@/app/actions-oauth"
 import { Icons } from "@/components/icons"
@@ -15,6 +16,18 @@ function LoginContent() {
     const error = searchParams.get('error');
     const isNotRegistered = error === "not_registered";
     const isNotMemberError = error === "指定されたDiscordサーバーのメンバーではありません。";
+    const [isLoading, setIsLoading] = useState(false);
+
+    async function handleLogin() {
+        setIsLoading(true);
+        try {
+            const { url } = await signInWithSTEM();
+            window.location.href = url;
+        } catch (e) {
+            console.error('OAuth login error:', e);
+            setIsLoading(false);
+        }
+    }
 
     return (
         <div className="flex flex-col items-center justify-center p-8">
@@ -59,12 +72,15 @@ function LoginContent() {
                     </Alert>
                 )}
                 
-                <form action={signInWithSTEM} className="mt-8">
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white" size="lg">
-                        <Icons.Logo className="w-5 h-5 mr-2" />
-                        STEMでログイン
-                    </Button>
-                </form>
+                <Button 
+                    onClick={handleLogin} 
+                    disabled={isLoading}
+                    className="w-full mt-8 bg-primary hover:bg-primary/90 text-white" 
+                    size="lg"
+                >
+                    <Icons.Logo className="w-5 h-5 mr-2" />
+                    {isLoading ? 'リダイレクト中...' : 'STEMでログイン'}
+                </Button>
             </div>
         </div>
     )
