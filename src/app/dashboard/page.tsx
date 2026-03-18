@@ -11,14 +11,12 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge";
 import { subDays } from "date-fns";
-import { ja } from "date-fns/locale";
 import AttendanceCalendar from "./components/AttendanceCalendar";
 import ClientRelativeTime from "./components/ClientRelativeTime";
 import CardMigrationAlert from "./components/CardMigrationAlert";
 import { calculateTotalActivityTime } from "../actions";
 import { convertGenerationToGrade, formatJst } from "@/lib/utils";
 import { redirect } from "next/navigation";
-import { fetchMemberNickname } from "@/lib/name-api";
 import { toZonedTime } from "date-fns-tz";
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +31,9 @@ export default async function DashboardPage() {
         redirect('/login');
     }
 
-    const { data: profile, error: profileError } = await supabase
+    // プロフィールと勤怠ユーザーを並列取得
+    const [profileResult, attendanceUserResult] = await Promise.all([
+      supabase
         .schema('member')
         .from('members')
         .select(`
@@ -41,89 +41,79 @@ export default async function DashboardPage() {
             generation,
             is_admin,
             joined_at,
+            display_name,
             member_team_relations(teams(name))
         `)
         .eq('supabase_auth_user_id', user!.id)
-        .single();
-    
-    if (profileError || !profile) {
-        console.error('Profile fetch error:', profileError);
-        console.error('User ID:', user.id);
-        redirect('/register/member-unregistered');
-    }
-
-    const { data: attendanceUser } = await supabase
+        .single(),
+      supabase
         .schema('attendance')
         .from('users')
         .select('card_id')
         .eq('supabase_auth_user_id', user!.id)
-        .single();
+        .single(),
+    ]);
 
-    const hasCardId = attendanceUser?.card_id && attendanceUser.card_id.trim() !== '';
+    const { data: profile, error: profileError } = profileResult;
 
+    if (profileError || !profile) {
+        console.error('Profile fetch error:', profileError);
+        redirect('/register/member-unregistered');
+    }
 
-    let displayName = '名無しさん';
+    const hasCardId = attendanceUserResult.data?.card_id && attendanceUserResult.data.card_id.trim() !== '';
+
+    // display_nameがDBにあればそれを使用（Discord API不要）
+    const displayName = profile.display_name || '名無しさん';
     let firstname = '';
     let lastname = '';
-    try {
-      if (profile.discord_uid) {
-          const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
-          if (nickname) {
-              displayName = nickname;
-              const nameParts = nickname.split(/\s+/);
-              if (nameParts.length >= 2) {
-                  lastname = nameParts[0].toLowerCase();
-                  firstname = nameParts[1].toLowerCase();
-              }
-          }
-      }
-    } catch (e) {
-      console.error('Failed to fetch nickname:', e);
+    if (displayName !== '名無しさん') {
+        const nameParts = displayName.split(/\s+/);
+        if (nameParts.length >= 2) {
+            lastname = nameParts[0].toLowerCase();
+            firstname = nameParts[1].toLowerCase();
+        }
     }
 
     const today = toZonedTime(new Date(), timeZone);
     const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');
     const userCreatedAtDate = formatJst(new Date(profile!.joined_at), 'yyyy-MM-dd');
 
-    const [attendancesResult, totalActivityTimeInHours] = await Promise.all([
+    // 出勤データの取得を全て並列化
+    const [attendancesResult, totalActivityTimeInHours, distinctDatesResult, totalClubActivityDatesResult] = await Promise.all([
       supabase.schema('attendance').from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5),
-      calculateTotalActivityTime(user!.id, 30)
+      calculateTotalActivityTime(user!.id, 30),
+      supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('date')
+        .eq('user_id', user!.id)
+        .eq('type', 'in')
+        .gte('date', thirtyDaysAgo),
+      supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('date')
+        .eq('type', 'in')
+        .gte('date', thirtyDaysAgo)
+        .gte('date', userCreatedAtDate),
     ]);
-    
-    const { data: attendances } = attendancesResult;
 
-    const { data: distinctDates } = await supabase
-      .schema('attendance')
-      .from('attendances')
-      .select('date')
-      .eq('user_id', user!.id)
-      .eq('type', 'in')
-      .gte('date', thirtyDaysAgo);
+    const { data: attendances } = attendancesResult;
+    const { data: distinctDates } = distinctDatesResult;
+    const { data: totalClubActivityDates } = totalClubActivityDatesResult;
 
     const userAttendanceDays = distinctDates ? new Set(distinctDates.map(d => d.date)).size : 0;
-    
-    const { data: totalClubActivityDates } = await supabase
-      .schema('attendance')
-      .from('attendances')
-      .select('date')
-      .eq('type', 'in')
-      .gte('date', thirtyDaysAgo)
-      .gte('date', userCreatedAtDate); 
-    
     const totalClubDays = totalClubActivityDates ? new Set(totalClubActivityDates.map(d => d.date)).size : 0;
 
     const attendanceRate = totalClubDays > 0 ? (userAttendanceDays / totalClubDays) * 100 : 0;
-    
+
     const teamName = profile?.member_team_relations?.[0]?.teams?.name;
 
   return (
     <div className="space-y-6">
         {!hasCardId && (
-            <CardMigrationAlert
-                userId={user!.id}
-                firstname={firstname}
-                lastname={lastname}
-            />
+            <CardMigrationAlert />
         )}
         
         <div className="flex justify-between items-start">

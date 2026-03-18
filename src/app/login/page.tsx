@@ -2,14 +2,13 @@
 'use client'
 
 import { Button } from "@/components/ui/button"
-import { signInWithDiscord } from "@/app/actions"
+import { signInWithSTEM } from "@/app/actions-oauth"
 import { Icons } from "@/components/icons"
 import { useSearchParams } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle, Moon, Sun, Link as LinkIcon, Info } from "lucide-react"
 import { Suspense } from "react"
 import { useTheme } from "next-themes"
-import { FaDiscord } from 'react-icons/fa';
 
 function LoginContent() {
     const searchParams = useSearchParams();
@@ -60,10 +59,10 @@ function LoginContent() {
                     </Alert>
                 )}
                 
-                <form action={signInWithDiscord} className="mt-8">
-                    <Button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white" size="lg">
-                        <FaDiscord className="w-5 h-5 mr-2" />
-                        Discordでログイン
+                <form action={signInWithSTEM} className="mt-8">
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white" size="lg">
+                        <Icons.Logo className="w-5 h-5 mr-2" />
+                        STEMでログイン
                     </Button>
                 </form>
             </div>

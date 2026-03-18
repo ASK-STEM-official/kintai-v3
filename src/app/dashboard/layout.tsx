@@ -16,38 +16,9 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { Menu } from "lucide-react";
 import DashboardNav from "./components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { fetchMemberNickname } from "@/lib/name-api";
 import { checkDiscordMembership } from "@/app/actions";
 
-async function UserProfile({ user }: { user: any }) {
-  const supabase = await createSupabaseServerClient();
-  
-  let displayName = '名無しさん';
-  
-  try {
-    const { data: profile, error } = await supabase
-      .schema('member')
-      .from('members')
-      .select('discord_uid')
-      .eq('supabase_auth_user_id', user.id)
-      .single();
-    
-    if (!error && profile) {
-      if (profile.discord_uid) {
-        try {
-          const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
-          if (nickname) {
-            displayName = nickname;
-          }
-        } catch (e) {
-          console.error('Failed to fetch nickname:', e);
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Failed to fetch profile:', e);
-  }
-  
+async function UserProfile({ user, displayName }: { user: any; displayName: string }) {
   const initials = displayName.charAt(0).toUpperCase() || 'U';
   
   return (
@@ -71,7 +42,7 @@ async function UserProfile({ user }: { user: any }) {
   )
 }
 
-function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+function MainSidebar({ user, isAdmin, displayName }: { user: any, isAdmin: boolean, displayName: string }) {
   return (
     <>
       <SidebarHeader>
@@ -87,13 +58,13 @@ function MainSidebar({ user, isAdmin }: { user: any, isAdmin: boolean }) {
         <DashboardNav isAdmin={isAdmin} />
       </SidebarContent>
       <SidebarFooter>
-        <UserProfile user={user} />
+        <UserProfile user={user} displayName={displayName} />
       </SidebarFooter>
     </>
   )
 }
 
-function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
+function MobileHeader({ user, isAdmin, displayName }: { user: any, isAdmin: boolean, displayName: string }) {
     return (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
@@ -105,7 +76,7 @@ function MobileHeader({ user, isAdmin }: { user: any, isAdmin: boolean }) {
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs flex flex-col p-0">
                     <SheetTitle className="sr-only">ナビゲーションメニュー</SheetTitle>
-                    <MainSidebar user={user} isAdmin={isAdmin} />
+                    <MainSidebar user={user} isAdmin={isAdmin} displayName={displayName} />
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
@@ -127,59 +98,85 @@ export default async function DashboardLayout({
     return redirect("/login");
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .schema('member')
-    .from('members')
-    .select('is_admin, discord_uid')
-    .eq('supabase_auth_user_id', user.id)
-    .single();
+  // プロフィールと勤怠ユーザーを並列取得
+  const [profileResult, attendanceUserResult] = await Promise.all([
+    supabase
+      .schema('member')
+      .from('members')
+      .select('is_admin, discord_uid, display_name')
+      .eq('supabase_auth_user_id', user.id)
+      .single(),
+    supabase
+      .schema('attendance')
+      .from('users')
+      .select('card_id')
+      .eq('supabase_auth_user_id', user.id)
+      .single(),
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
 
   // member.membersに登録されていない場合は、メインシステム登録画面へ
   if (profileError || !profile) {
     console.error('Profile fetch error:', profileError);
-    console.error('User ID:', user.id);
     return redirect("/register/member-unregistered");
   }
 
-  // Discordサーバーに参加しているか確認
+  // Discordサーバーに参加しているか確認 + ニックネーム取得（1つのAPIコールで両方）
+  let displayName = profile.display_name || '名無しさん';
   if (profile.discord_uid) {
     try {
       const discordCheck = await checkDiscordMembership(profile.discord_uid);
       if (discordCheck.success && !discordCheck.isInServer) {
-        // Discordサーバーに未参加の場合は専用ページへリダイレクト
         console.log('User not in Discord server, redirecting:', profile.discord_uid);
         return redirect("/register/discord-required");
       }
+      // checkDiscordMembershipのレスポンスにニックネームが含まれる
+      if (discordCheck.nickname && displayName === '名無しさん') {
+        // ニックネームから名前部分を抽出（"1期 | 米川 明希" → "米川 明希"）
+        const parts = discordCheck.nickname.split('|');
+        const nameOnly = parts.length > 1 ? parts[parts.length - 1].trim() : discordCheck.nickname.trim();
+        displayName = nameOnly;
+        // DBにもキャッシュ保存（非同期）
+        const adminClient = await createSupabaseAdminClient();
+        adminClient.schema('member').from('members')
+          .update({ display_name: nameOnly })
+          .eq('discord_uid', profile.discord_uid!)
+          .then(() => console.log(`Cached display_name for ${profile.discord_uid}`));
+      }
     } catch (error) {
-      // redirectはエラーとしてthrowされるため、NEXT_REDIRECTの場合は再スロー
       if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
         throw error;
       }
-      // その他のDiscord確認エラーの場合も未参加として扱う
       console.error('Discord membership check failed:', error);
       return redirect("/register/discord-required");
     }
   }
 
-  // カードID未登録でもダッシュボードにアクセス可能にする
-  // （カード未登録の警告はpage.tsxで表示）
-  const { data: attendanceUser, error: attendanceError } = await supabase
-    .schema('attendance')
-    .from('users')
-    .select('card_id')
-    .eq('supabase_auth_user_id', user.id)
-    .single();
+  const { data: attendanceUser, error: attendanceError } = attendanceUserResult;
 
-  // attendanceUserレコード自体が存在しない場合はカード未登録画面へ
-  // （レコードは引き継ぎ時に作成される）
+  // attendanceUserレコード自体が存在しない場合は自動作成
   if (attendanceError?.code === 'PGRST116' || !attendanceUser) {
-    // PGRST116 = レコードが見つからない
-    console.log('No attendance user record found, redirecting to card registration:', user.id);
-    return redirect("/register/card-unregistered");
-  } 
-  
-  if (attendanceError) {
-    // その他のエラー（DB接続エラーなど）
+    console.log('No attendance user record found, auto-creating with temp card_id:', user.id);
+    
+    // attendance.users レコードを自動作成
+    const adminClient = await createSupabaseAdminClient();
+    const { error: createError } = await adminClient
+      .schema('attendance')
+      .from('users')
+      .insert({
+        supabase_auth_user_id: user.id,
+        card_id: `TEMP_${user.id}`,  // 一時的なカードID（後でQRコードで実際のカードIDに更新可能）
+      });
+    
+    if (createError) {
+      console.error('Failed to auto-create attendance user:', createError);
+      return redirect("/register/card-unregistered");
+    }
+    
+    console.log('Auto-created attendance.users record with temp card_id');
+    // 作成後、そのまま続行（attendanceUserは使われない）
+  } else if (attendanceError) {
     console.error('Unexpected error fetching attendance user:', attendanceError);
     return redirect("/register/card-unregistered");
   }
@@ -190,10 +187,10 @@ export default async function DashboardLayout({
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar className="hidden sm:flex">
-            <MainSidebar user={user} isAdmin={isAdmin} />
+            <MainSidebar user={user} isAdmin={isAdmin} displayName={displayName} />
         </Sidebar>
         <div className="flex flex-1 flex-col">
-          <MobileHeader user={user} isAdmin={isAdmin} />
+          <MobileHeader user={user} isAdmin={isAdmin} displayName={displayName} />
           <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
               {children}
           </main>

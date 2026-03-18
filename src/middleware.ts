@@ -26,7 +26,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 他のすべてのルートでSupabaseのセッションを更新
+  // OAuth セッションチェック（/login と /auth/* 以外）
+  const isPublicPath = request.nextUrl.pathname.startsWith('/login') || 
+                       request.nextUrl.pathname.startsWith('/auth/');
+  
+  if (!isPublicPath) {
+    const oauthUserId = request.cookies.get('oauth_user_id')?.value;
+    const oauthToken = request.cookies.get('oauth_access_token')?.value;
+    
+    // OAuth セッションがある場合はそのまま通す
+    if (oauthUserId && oauthToken) {
+      return NextResponse.next();
+    }
+    
+    // OAuth セッションがない場合はログインへリダイレクト
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // 他のすべてのルートでSupabaseのセッションを更新（後方互換性のため残す）
   return await updateSession(request);
 }
 
