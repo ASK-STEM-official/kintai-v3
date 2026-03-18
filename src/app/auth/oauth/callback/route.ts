@@ -38,10 +38,11 @@ export async function GET(request: Request) {
 
   try {
     // トークンエンドポイントにリクエスト
-    const tokenEndpoint = process.env.NEXT_PUBLIC_STEM_OAUTH_TOKEN_URL || 'http://localhost:3000/oauth/token';
+    const oauthBaseUrl = (process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || 'http://localhost:3000/oauth').replace(/\/$/, '');
     const clientId = process.env.STEM_OAUTH_CLIENT_ID!;
     const clientSecret = process.env.STEM_OAUTH_CLIENT_SECRET!;
-    const redirectUri = process.env.NEXT_PUBLIC_STEM_OAUTH_REDIRECT_URI!;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const redirectUri = `${appUrl}/auth/oauth/callback`;
 
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
       code_verifier: codeVerifier,
     });
 
-    const tokenResponse = await fetch(tokenEndpoint, {
+    const tokenResponse = await fetch(`${oauthBaseUrl}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
@@ -67,9 +68,7 @@ export async function GET(request: Request) {
     const { access_token } = await tokenResponse.json();
 
     // UserInfo エンドポイントからユーザー情報を取得
-    const userinfoEndpoint = process.env.NEXT_PUBLIC_STEM_OAUTH_USERINFO_URL || 'http://localhost:3000/oauth/userinfo';
-    
-    const userinfoResponse = await fetch(userinfoEndpoint, {
+    const userinfoResponse = await fetch(`${oauthBaseUrl}/userinfo`, {
       headers: { Authorization: `Bearer ${access_token}` },
     });
 
