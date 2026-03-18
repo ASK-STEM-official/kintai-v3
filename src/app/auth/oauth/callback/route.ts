@@ -102,6 +102,11 @@ export async function GET(request: Request) {
     return redirect('/');
     
   } catch (error) {
+    // redirect() は内部的に特殊なエラーを throw するので再 throw する
+    if (error instanceof Error && error.message === 'NEXT_REDIRECT') throw error;
+    if (typeof error === 'object' && error !== null && 'digest' in error &&
+        typeof (error as { digest: unknown }).digest === 'string' &&
+        (error as { digest: string }).digest.startsWith('NEXT_REDIRECT')) throw error;
     console.error('OAuth callback error:', error);
     return redirect('/login?error=callback_failed');
   }
