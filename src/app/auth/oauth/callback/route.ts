@@ -5,7 +5,6 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -77,24 +76,6 @@ export async function GET(request: Request) {
     }
 
     const userInfo = await userinfoResponse.json();
-    
-    // ユーザー情報を Supabase に保存・更新
-    const supabase = await createClient();
-    
-    // users テーブルにユーザーを作成/更新
-    const { error: upsertError } = await supabase
-      .from('public.users')
-      .upsert({
-        id: userInfo.sub,
-        display_name: userInfo.display_name,
-        discord_id: userInfo.discord_id,
-      }, {
-        onConflict: 'id'
-      });
-
-    if (upsertError) {
-      console.error('Failed to upsert user:', upsertError);
-    }
 
     // OAuth セッションを Cookie に保存
     cookieStore.set('oauth_access_token', access_token, {
