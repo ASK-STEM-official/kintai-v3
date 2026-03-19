@@ -220,6 +220,7 @@ export type Database = {
           avatar_url: string | null
           deleted_at: string | null
           discord_uid: string
+          discord_username: string | null
           display_name: string
           generation: number
           is_admin: boolean
@@ -232,6 +233,7 @@ export type Database = {
           avatar_url?: string | null
           deleted_at?: string | null
           discord_uid: string
+          discord_username?: string | null
           display_name: string
           generation: number
           is_admin?: boolean
@@ -244,6 +246,7 @@ export type Database = {
           avatar_url?: string | null
           deleted_at?: string | null
           discord_uid?: string
+          discord_username?: string | null
           display_name?: string
           generation?: number
           is_admin?: boolean

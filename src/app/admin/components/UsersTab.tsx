@@ -340,14 +340,14 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         <AlertDialogTrigger asChild>
                             <Button variant="outline">
                                 <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingNames ? 'animate-spin' : ''}`} />
-                                表示名を更新
+                                Discordユーザー名を更新
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader>
-                            <AlertDialogTitle>全ユーザーの表示名を更新しますか？</AlertDialogTitle>
+                            <AlertDialogTitle>全ユーザーのDiscordユーザー名を更新しますか？</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Discordサーバーのニックネーム（本名）をAPI経由で取得し、このシステムの全ユーザーの表示名を上書きします。この操作は時間がかかる場合があります。
+                                Bot API経由でDiscordユーザー名を取得し、未登録のユーザーを更新します。この操作は時間がかかる場合があります。
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

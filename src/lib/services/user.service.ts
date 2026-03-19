@@ -1,7 +1,6 @@
 'use server';
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
-import { fetchMemberNickname } from "@/lib/name-api";
 
 type UserWithDetails = {
     id: string;
@@ -32,6 +31,7 @@ export async function getAllUsersWithStatus(): Promise<{ data: UserWithDetails[]
             .select(`
                 supabase_auth_user_id,
                 discord_uid,
+                discord_username,
                 generation,
                 is_admin,
                 student_number,
@@ -70,34 +70,14 @@ export async function getAllUsersWithStatus(): Promise<{ data: UserWithDetails[]
             }
         });
 
-        // Discord UIDから本名を一括取得（エラー耐性を持たせる）
-        const discordUids = members?.map((m: any) => m.discord_uid).filter(Boolean) || [];
-        const nameMap = new Map<string, string>();
-        
-        // 本名取得API呼び出し（エラーが発生しても続行）
-        await Promise.allSettled(
-            discordUids.map(async (discord_uid: string) => {
-                try {
-                    const { data: nickname, error } = await fetchMemberNickname(discord_uid);
-                    if (nickname && !error) {
-                        nameMap.set(discord_uid, nickname);
-                    }
-                } catch (error) {
-                    // 個別のエラーは無視して続行
-                    console.warn(`Failed to fetch nickname for ${discord_uid}:`, error);
-                }
-            })
-        );
-
-        // データを結合
+        // データを結合（discord_username をDBから取得、本名はBot APIからオンデマンドで取得）
         const users = members?.map((member: any) => {
             const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
             const teamRelation = member.member_team_relations?.[0];
-            const realName = member.discord_uid ? nameMap.get(member.discord_uid) : null;
-            
+
             return {
                 id: member.supabase_auth_user_id,
-                display_name: realName || '名無しさん',
+                display_name: member.discord_username || '不明',
                 card_id: cardMap.get(member.supabase_auth_user_id) || null,
                 team_name: teamRelation?.teams?.name || null,
                 team_id: teamRelation?.team_id || null,
@@ -119,22 +99,22 @@ export async function getAllUsersWithStatus(): Promise<{ data: UserWithDetails[]
 }
 
 /**
- * ユーザーの表示名を更新
+ * ユーザーのDiscordユーザー名を更新（本名はDBに保存しない）
  */
-export async function updateUserDisplayName(userId: string, displayName: string) {
+export async function updateUserDisplayName(userId: string, discordUsername: string) {
     const supabase = await createSupabaseAdminClient();
-    
+
     const { error } = await supabase
         .schema('member')
         .from('members')
-        .update({ display_name: displayName })
+        .update({ discord_username: discordUsername })
         .eq('supabase_auth_user_id', userId);
-    
+
     return { success: !error, error };
 }
 
 /**
- * 全ユーザーの表示名を一括更新
+ * 全ユーザーのDiscordユーザー名を一括更新（本名はDBに保存しない）
  */
 export async function updateAllUserDisplayNames() {
     const supabase = await createSupabaseAdminClient();
@@ -143,50 +123,49 @@ export async function updateAllUserDisplayNames() {
         const { data: members, error: fetchError } = await supabase
             .schema('member')
             .from('members')
-            .select('supabase_auth_user_id, discord_uid');
+            .select('supabase_auth_user_id, discord_uid, discord_username');
 
         if (fetchError || !members) {
             return { success: false, message: 'ユーザーの取得に失敗しました。' };
         }
 
+        const { fetchAllMemberNames } = await import('@/lib/name-api');
+        const nameApiResult = await fetchAllMemberNames();
+        if (!nameApiResult.data) {
+            return { success: false, message: 'Bot APIからの取得に失敗しました。' };
+        }
+
+        const usernameMap = new Map<string, string>(
+            nameApiResult.data.filter(item => item.username).map(item => [item.uid, item.username!])
+        );
+
         let successCount = 0;
         let failCount = 0;
 
-        // 並列処理で全ユーザーの名前を更新（エラー耐性）
-        await Promise.allSettled(
-            members.map(async (member: any) => {
-                if (!member.discord_uid) return;
+        for (const member of members) {
+            if (!member.discord_uid) continue;
+            const username = usernameMap.get(member.discord_uid);
+            if (username && username !== member.discord_username) {
+                const { error: updateError } = await supabase
+                    .schema('member')
+                    .from('members')
+                    .update({ discord_username: username })
+                    .eq('supabase_auth_user_id', member.supabase_auth_user_id);
 
-                try {
-                    const { data: nickname, error } = await fetchMemberNickname(member.discord_uid);
-                    
-                    if (nickname && !error) {
-                        const { error: updateError } = await supabase
-                            .schema('member')
-                            .from('members')
-                            .update({ display_name: nickname })
-                            .eq('supabase_auth_user_id', member.supabase_auth_user_id);
-
-                        if (!updateError) {
-                            successCount++;
-                        } else {
-                            failCount++;
-                        }
-                    } else {
-                        failCount++;
-                    }
-                } catch {
+                if (!updateError) {
+                    successCount++;
+                } else {
                     failCount++;
                 }
-            })
-        );
+            }
+        }
 
         return {
             success: true,
             message: `更新完了: 成功 ${successCount}件、失敗 ${failCount}件`,
         };
     } catch (error) {
-        console.error('Error updating all display names:', error);
+        console.error('Error updating all discord usernames:', error);
         return { success: false, message: '更新中にエラーが発生しました。' };
     }
 }

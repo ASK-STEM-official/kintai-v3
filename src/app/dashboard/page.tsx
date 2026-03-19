@@ -36,7 +36,7 @@ export default async function DashboardPage() {
             generation,
             is_admin,
             joined_at,
-            display_name,
+            discord_username,
             member_team_relations(teams(name))
         `)
         .eq('supabase_auth_user_id', userId)
@@ -58,17 +58,8 @@ export default async function DashboardPage() {
 
     const hasCardId = attendanceUserResult.data?.card_id && attendanceUserResult.data.card_id.trim() !== '';
 
-    // display_nameがDBにあればそれを使用（Discord API不要）
-    const displayName = profile.display_name || '名無しさん';
-    let firstname = '';
-    let lastname = '';
-    if (displayName !== '名無しさん') {
-        const nameParts = displayName.split(/\s+/);
-        if (nameParts.length >= 2) {
-            lastname = nameParts[0].toLowerCase();
-            firstname = nameParts[1].toLowerCase();
-        }
-    }
+    // discord_usernameをDBから取得（Discord API不要）
+    const displayName = profile.discord_username || '名無しさん';
 
     const today = toZonedTime(new Date(), timeZone);
     const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');

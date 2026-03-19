@@ -11,7 +11,6 @@ import {
 import { subDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import { redirect } from "next/navigation";
-import { fetchMemberNickname } from "@/lib/name-api";
 import { calculateTotalActivityTime } from "@/app/actions";
 import { convertGenerationToGrade, formatJst } from "@/lib/utils";
 import { Calendar as CalendarIcon, Clock, Percent, BarChart } from "lucide-react";
@@ -48,29 +47,19 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
         .from('members')
         .select(`
             discord_uid,
+            discord_username,
             generation,
             joined_at,
             member_team_relations(teams(name))
         `)
         .eq('supabase_auth_user_id', resolvedParams.userId)
         .single();
-    
+
     if (profileError || !profile) {
         redirect('/admin');
     }
 
-    // Discord UIDから本名を取得
-    let displayName = '名無しさん';
-    try {
-      if (profile.discord_uid) {
-          const { data: nickname } = await fetchMemberNickname(profile.discord_uid);
-          if (nickname) {
-              displayName = nickname;
-          }
-      }
-    } catch (e) {
-      console.error('Failed to fetch nickname:', e);
-    }
+    const displayName = profile.discord_username || '名無しさん';
 
     const today = toZonedTime(new Date(), timeZone);
     const thirtyDaysAgo = formatJst(subDays(today, 30), 'yyyy-MM-dd');

@@ -10,7 +10,7 @@ import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { differenceInSeconds, startOfDay, endOfDay, subDays, format as formatDate, startOfMonth, endOfMonth } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
-import { fetchAllMemberNames, fetchMemberNickname } from '@/lib/name-api';
+import { fetchAllMemberNames } from '@/lib/name-api';
 import { fetchMemberStatus } from '@/lib/member-status-api';
 
 type Member = Tables<'member', 'members'>;
@@ -70,20 +70,7 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
 
   const result = data as { success: boolean; message: string; user: { display_name: string | null; discord_uid: string | null } | null; type: 'in' | 'out' | null };
 
-  // display_name がDBにない場合、Discord Bot APIから取得してDBにも保存
-  if (result.success && result.user && !result.user.display_name && result.user.discord_uid) {
-    const nicknameStart = Date.now();
-    const { data: nickname } = await fetchMemberNickname(result.user.discord_uid);
-    console.log(`[RECORD_ATTENDANCE:${traceId}] Nickname API fallback: ${Date.now() - nicknameStart}ms`);
-    if (nickname) {
-      result.user.display_name = nickname;
-      // DBにもキャッシュ保存（非同期、レスポンスは待たない）
-      supabase.schema('member').from('members')
-        .update({ display_name: nickname })
-        .eq('discord_uid', result.user.discord_uid)
-        .then(() => console.log(`[RECORD_ATTENDANCE:${traceId}] Cached display_name for ${result.user!.discord_uid}`));
-    }
-  }
+  // display_name が無い場合はフォールバック（DBには本名を保存しない）
   if (result.user && !result.user.display_name) {
     result.user.display_name = '名無しさん';
   }
@@ -485,17 +472,19 @@ export async function getAllUsersWithStatus() {
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
-    // discord_username が NULL のユーザーを Bot API でバックフィル（バックグラウンド）
-    const uncachedUsernames = members?.filter(m => !m.discord_username && m.discord_uid) || [];
+    // discord_username が NULL のユーザーを auth.users の full_name からバックフィル（バックグラウンド）
+    const uncachedUsernames = members?.filter(m => !m.discord_username) || [];
     if (uncachedUsernames.length > 0) {
-        fetchAllMemberNames().then(result => {
-            if (!result.data) return;
-            const usernameMap = new Map(result.data.filter(i => i.username).map(i => [i.uid, i.username!]));
+        supabase.auth.admin.listUsers({ perPage: 1000 }).then(({ data }) => {
+            if (!data?.users) return;
+            const usernameMap = new Map(
+                data.users.filter(u => u.user_metadata?.full_name).map(u => [u.id, u.user_metadata.full_name as string])
+            );
             Promise.all(uncachedUsernames
-                .filter(m => usernameMap.has(m.discord_uid))
+                .filter(m => usernameMap.has(m.supabase_auth_user_id))
                 .map(m =>
                     supabase.schema('member').from('members')
-                        .update({ discord_username: usernameMap.get(m.discord_uid!) })
+                        .update({ discord_username: usernameMap.get(m.supabase_auth_user_id) })
                         .eq('supabase_auth_user_id', m.supabase_auth_user_id)
                 )
             ).then(() => console.log(`Backfilled discord_username for ${uncachedUsernames.length} users`));
@@ -549,47 +538,38 @@ export async function getAllUsersWithStatus() {
  * DB キャッシュ → Bot API フォールバック。
  * 返り値: { [supabase_auth_user_id]: realName }
  */
+/**
+ * 本名を Bot API から取得（DBには保存しない）。
+ * チェックボックス押下時に呼ばれる。
+ */
 export async function fetchAllUserRealNames(): Promise<{ data: Record<string, string> | null; error: string | null }> {
     const supabase = await createSupabaseAdminClient();
 
-    // DB から display_name（本名キャッシュ）を取得
+    // discord_uid → supabase_auth_user_id のマッピングを取得
     const { data: members, error } = await supabase
         .schema('member')
         .from('members')
-        .select('supabase_auth_user_id, discord_uid, display_name')
+        .select('supabase_auth_user_id, discord_uid')
         .is('deleted_at', null);
 
     if (error) {
-        console.error('fetchAllUserRealNames: DB error', error);
         return { data: null, error: error.message };
     }
 
-    const result: Record<string, string> = {};
-    const missing: typeof members = [];
-
-    for (const m of members || []) {
-        if (m.display_name) {
-            result[m.supabase_auth_user_id] = m.display_name;
-        } else if (m.discord_uid) {
-            missing.push(m);
-        }
+    // Bot API から本名を取得（DBには保存しない）
+    const nameApiResult = await fetchAllMemberNames();
+    if (!nameApiResult.data) {
+        return { data: null, error: 'Bot API からの取得に失敗しました' };
     }
 
-    // キャッシュに無いユーザーは Bot API で取得してキャッシュ
-    if (missing.length > 0) {
-        const nameApiResult = await fetchAllMemberNames();
-        if (nameApiResult.data) {
-            const nameMap = new Map(nameApiResult.data.map(item => [item.uid, item.name]));
-            for (const m of missing) {
-                const name = nameMap.get(m.discord_uid!);
-                if (name) {
-                    result[m.supabase_auth_user_id] = name;
-                    // DB にキャッシュ（fire-and-forget）
-                    supabase.schema('member').from('members')
-                        .update({ display_name: name })
-                        .eq('supabase_auth_user_id', m.supabase_auth_user_id)
-                        .then(() => {});
-                }
+    const nameMap = new Map(nameApiResult.data.map(item => [item.uid, item.name]));
+    const result: Record<string, string> = {};
+
+    for (const m of members || []) {
+        if (m.discord_uid) {
+            const name = nameMap.get(m.discord_uid);
+            if (name) {
+                result[m.supabase_auth_user_id] = name;
             }
         }
     }
@@ -797,30 +777,48 @@ export async function getTeamWithMembersStatus(teamId: number) {
     const { data: team, error: teamError } = await supabase.schema('member').from('teams').select('*').eq('id', String(teamId)).single();
     if(teamError || !team) return { team: null, members: [], stats: null, error: teamError?.message };
 
-    const { data, error: membersError } = await (supabase.schema('member') as any)
-        .from('users_with_latest_attendance_and_team')
-        .select(`
-            id,
-            display_name,
-            generation,
-            latest_attendance_type,
-            latest_timestamp
-        `)
+    // チームメンバーを取得
+    const { data: teamRelations, error: relError } = await supabase
+        .schema('member')
+        .from('member_team_relations')
+        .select('member_id')
         .eq('team_id', String(teamId));
-    
-    if (membersError || !data) {
-        console.error("Error fetching team members with status:", membersError);
-        return { team, members: [], stats: null, error: membersError?.message || 'Failed to fetch members' };
+
+    if (relError || !teamRelations?.length) {
+        return { team, members: [], stats: await getTeamStats(teamId as any), error: relError?.message || null };
     }
 
-    const members = (data as any[]).map(m => ({
-        id: m.id,
-        display_name: m.display_name,
-        generation: m.generation,
-        latest_attendance_type: m.latest_attendance_type || 'out',
-        latest_timestamp: m.latest_timestamp || null,
-    }));
-    
+    const memberIds = teamRelations.map(r => r.member_id);
+    const { data: memberData } = await supabase
+        .schema('member')
+        .from('members')
+        .select('supabase_auth_user_id, discord_username, generation')
+        .in('supabase_auth_user_id', memberIds);
+
+    // 最新打刻を取得
+    const { data: latestAttendances } = await supabase
+        .schema('attendance')
+        .from('attendances')
+        .select('user_id, type, timestamp')
+        .in('user_id', memberIds)
+        .order('timestamp', { ascending: false });
+
+    const latestMap = new Map<string, { type: string; timestamp: string }>();
+    latestAttendances?.forEach(a => {
+        if (!latestMap.has(a.user_id)) latestMap.set(a.user_id, { type: a.type, timestamp: a.timestamp });
+    });
+
+    const members = (memberData || []).map(m => {
+        const latest = latestMap.get(m.supabase_auth_user_id);
+        return {
+            id: m.supabase_auth_user_id,
+            display_name: m.discord_username || '不明',
+            generation: m.generation,
+            latest_attendance_type: latest?.type || 'out',
+            latest_timestamp: latest?.timestamp || null,
+        };
+    });
+
     const stats = await getTeamStats(teamId as any);
 
     return { team, members: members.sort((a,b) => b.generation - a.generation || a.display_name.localeCompare(b.display_name)), stats: stats, error: null };
@@ -964,7 +962,7 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
     const { data: users, error: usersError } = await supabase
         .schema('member')
         .from('members')
-        .select('supabase_auth_user_id, discord_uid');
+        .select('supabase_auth_user_id, discord_uid, discord_username');
 
     if (usersError) {
         return { success: false, message: `ユーザーの取得に失敗しました: ${usersError.message}`, count: 0 };
@@ -979,18 +977,21 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
         return { success: false, message: `Bot APIからの取得に失敗: ${detail}`, count: 0 };
     }
 
-    const nameMap = new Map<string, string>(nameApiResult.data.map(item => [item.uid, item.name]));
+    // Bot API から discord_username を取得して更新（本名はDBに保存しない）
+    const usernameMap = new Map<string, string>(
+        nameApiResult.data.filter(item => item.username).map(item => [item.uid, item.username!])
+    );
     let updatedCount = 0;
     const errors: string[] = [];
 
     for (const user of users) {
         if (!user.discord_uid) continue;
-        const newName = nameMap.get(user.discord_uid);
-        if (newName) {
+        const username = usernameMap.get(user.discord_uid);
+        if (username && username !== user.discord_username) {
             const { error: updateError } = await supabase
                 .schema('member')
                 .from('members')
-                .update({ display_name: newName })
+                .update({ discord_username: username })
                 .eq('supabase_auth_user_id', user.supabase_auth_user_id);
 
             if (updateError) {
@@ -1007,7 +1008,7 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
 
     revalidatePath('/admin/users');
     revalidatePath('/dashboard');
-    return { success: true, message: `${updatedCount}人のユーザー表示名を正常に更新しました。`, count: updatedCount };
+    return { success: true, message: `${updatedCount}人のDiscordユーザー名を更新しました。`, count: updatedCount };
 }
 
 export async function getOverallStats(days: number = 30) {
