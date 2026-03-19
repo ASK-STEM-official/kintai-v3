@@ -487,34 +487,19 @@ export async function getAllUsersWithStatus() {
 
     // auth.users から Discord ユーザー名（一意のハンドル）を取得
     const discordUsernameMap = new Map<string, string>();
-    if (authUsersResult.error) {
-        console.error('Error fetching auth users:', authUsersResult.error);
-    }
     const authUsers = authUsersResult.data?.users || [];
-    if (authUsers.length > 0) {
-        // 最初のユーザーの metadata をログ出力（デバッグ用）
-        const sample = authUsers[0];
-        console.log('[getAllUsersWithStatus] sample user_metadata keys:', Object.keys(sample.user_metadata || {}));
-        console.log('[getAllUsersWithStatus] sample identity providers:', sample.identities?.map(i => i.provider));
-        if (sample.identities?.[0]) {
-            console.log('[getAllUsersWithStatus] sample identity_data keys:', Object.keys(sample.identities[0].identity_data || {}));
-        }
-    }
     authUsers.forEach(u => {
-        // 複数のフィールド名を試す（Supabase版によって異なる）
         const meta = u.user_metadata || {};
         let username: string | null =
             meta.user_name ||
             meta.preferred_username ||
-            meta.custom_claims?.global_name ||
             null;
 
-        // identities からも探す
         if (!username && u.identities) {
             for (const id of u.identities) {
                 if (id.provider === 'discord') {
                     const idData = id.identity_data || {};
-                    username = idData.user_name || idData.preferred_username || idData.custom_claims?.global_name || null;
+                    username = idData.user_name || idData.preferred_username || null;
                     break;
                 }
             }
@@ -551,7 +536,7 @@ export async function getAllUsersWithStatus() {
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName || '不明',
+            display_name: discordName ? `@${discordName}` : '不明',
             discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
