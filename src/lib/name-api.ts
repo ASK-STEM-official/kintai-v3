@@ -11,6 +11,7 @@
 type MemberName = {
     uid: string;
     name: string;
+    username?: string;
 };
 
 type MemberNickname = {

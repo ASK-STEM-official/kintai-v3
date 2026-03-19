@@ -454,8 +454,8 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
 
-    // メンバー、勤怠ユーザー、auth情報を並列取得（Bot API は呼ばない — 高速化）
-    const [membersResult, attendanceUsersResult, authUsersResult] = await Promise.all([
+    // メンバー、勤怠ユーザー、Bot API を並列取得
+    const [membersResult, attendanceUsersResult, botApiResult] = await Promise.all([
       supabase
         .schema('member')
         .from('members')
@@ -473,7 +473,7 @@ export async function getAllUsersWithStatus() {
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id, card_id'),
-      supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      fetchAllMemberNames(),
     ]);
 
     const { data: members, error: membersError } = membersResult;
@@ -485,30 +485,15 @@ export async function getAllUsersWithStatus() {
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
-    // auth.users から Discord ユーザー名（一意のハンドル）を取得
+    // Bot API から Discord ユーザー名（一意ハンドル）を取得
     const discordUsernameMap = new Map<string, string>();
-    const authUsers = authUsersResult.data?.users || [];
-    authUsers.forEach(u => {
-        const meta = u.user_metadata || {};
-        let username: string | null =
-            meta.user_name ||
-            meta.preferred_username ||
-            null;
-
-        if (!username && u.identities) {
-            for (const id of u.identities) {
-                if (id.provider === 'discord') {
-                    const idData = id.identity_data || {};
-                    username = idData.user_name || idData.preferred_username || null;
-                    break;
-                }
+    if (botApiResult.data) {
+        botApiResult.data.forEach(item => {
+            if (item.username) {
+                discordUsernameMap.set(item.uid, item.username);
             }
-        }
-
-        if (username) {
-            discordUsernameMap.set(u.id, username.split('#')[0]);
-        }
-    });
+        });
+    }
 
     const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
 
@@ -532,11 +517,11 @@ export async function getAllUsersWithStatus() {
     const users = members?.map((member: any) => {
         const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
         const teamRelation = member.member_team_relations?.[0];
-        const discordName = discordUsernameMap.get(member.supabase_auth_user_id) || null;
+        const discordName = member.discord_uid ? discordUsernameMap.get(member.discord_uid) || null : null;
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName ? `@${discordName}` : '不明',
+            display_name: discordName || '不明',
             discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
