@@ -927,7 +927,8 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
 
     const nameApiResult = await fetchAllMemberNames();
     if (!nameApiResult.data) {
-        return { success: false, message: 'APIからの名前リストの取得に失敗しました。', count: 0 };
+        const detail = typeof nameApiResult.error === 'string' ? nameApiResult.error : JSON.stringify(nameApiResult.error);
+        return { success: false, message: `Bot APIからの取得に失敗: ${detail}`, count: 0 };
     }
 
     const nameMap = new Map<string, string>(nameApiResult.data.map(item => [item.uid, item.name]));

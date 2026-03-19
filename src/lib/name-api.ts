@@ -1,20 +1,12 @@
 
-import axios from 'axios';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_STEM_BOT_API_URL;
-const API_TOKEN = process.env.STEM_BOT_API_BEARER_TOKEN;
-
-if (!API_BASE_URL || !API_TOKEN) {
-    console.warn("Name API environment variables (NEXT_PUBLIC_STEM_BOT_API_URL, STEM_BOT_API_BEARER_TOKEN) are not fully set. Name API features will be disabled.");
-}
-
-const api = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-        'Authorization': `Bearer ${API_TOKEN}`,
-        'Content-Type': 'application/json'
-    }
-});
+/**
+ * Discord Bot API から表示名を取得するクライアント。
+ *
+ * 環境変数:
+ *   STEM_BOT_API_URL          — Bot API のベース URL
+ *   NEXT_PUBLIC_STEM_BOT_API_URL — フォールバック（既存互換）
+ *   STEM_BOT_API_BEARER_TOKEN — Bearer トークン
+ */
 
 type MemberName = {
     uid: string;
@@ -27,20 +19,36 @@ type MemberNickname = {
     name_only: string;
 };
 
+function getConfig() {
+    const baseUrl = (process.env.STEM_BOT_API_URL || process.env.NEXT_PUBLIC_STEM_BOT_API_URL || '').replace(/\/$/, '');
+    const token = process.env.STEM_BOT_API_BEARER_TOKEN || '';
+    return { baseUrl, token, configured: !!(baseUrl && token) };
+}
+
 /**
- * Fetches a list of all members and their real names from the Discord server.
- * @returns An array of objects with `uid` and `name`, or null if an error occurs.
+ * 全メンバーの名前を一括取得
  */
 export async function fetchAllMemberNames(): Promise<{ data: MemberName[] | null, error: any }> {
-    if (!API_BASE_URL || !API_TOKEN) {
-        return { data: null, error: "API not configured." };
+    const { baseUrl, token, configured } = getConfig();
+    if (!configured) {
+        console.warn('Bot API not configured (STEM_BOT_API_URL / STEM_BOT_API_BEARER_TOKEN)');
+        return { data: null, error: 'API not configured.' };
     }
     try {
-        const response = await api.get('/api/members');
-        if (response.data.success && Array.isArray(response.data.data)) {
-            return { data: response.data.data, error: null };
+        const res = await fetch(`${baseUrl}/api/members`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            console.error(`Bot API /api/members failed: ${res.status} ${text}`);
+            return { data: null, error: `HTTP ${res.status}` };
         }
-        return { data: null, error: response.data.message || "Failed to fetch members." };
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+            return { data: json.data, error: null };
+        }
+        return { data: null, error: json.message || 'Unexpected response format' };
     } catch (error) {
         console.error('Failed to fetch all member names:', error);
         return { data: null, error };
@@ -48,34 +56,28 @@ export async function fetchAllMemberNames(): Promise<{ data: MemberName[] | null
 }
 
 /**
- * Fetches the real name (nickname) for a specific Discord user.
- * @param discordUid The Discord user ID
- * @returns The member's real name, or null if an error occurs or API is not configured.
+ * 特定ユーザーのニックネームを取得
  */
 export async function fetchMemberNickname(discordUid: string): Promise<{ data: string | null, error: any }> {
-    if (!API_BASE_URL || !API_TOKEN) {
-        return { data: null, error: "API not configured." };
+    const { baseUrl, token, configured } = getConfig();
+    if (!configured) {
+        return { data: null, error: 'API not configured.' };
     }
     try {
-        const response = await api.get<MemberNickname>('/api/nickname', {
-            params: { discord_uid: discordUid },
-            timeout: 10000
+        const res = await fetch(`${baseUrl}/api/nickname?discord_uid=${encodeURIComponent(discordUid)}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(10000),
         });
-        
-        if (response.data && response.data.name_only) {
-            return { data: response.data.name_only, error: null };
+        if (!res.ok) {
+            return { data: null, error: `HTTP ${res.status}` };
         }
-        return { data: null, error: "Invalid response format" };
+        const json: MemberNickname = await res.json();
+        if (json.name_only) {
+            return { data: json.name_only, error: null };
+        }
+        return { data: null, error: 'Invalid response format' };
     } catch (error: any) {
         console.error('Failed to fetch member nickname:', error);
-        if (error.code === 'ECONNABORTED') {
-            return { data: null, error: 'TIMEOUT' };
-        }
-        if (error.response?.status === 502 || error.response?.status === 503) {
-            return { data: null, error: 'SERVER_ERROR' };
-        }
         return { data: null, error };
     }
 }
-
-    
