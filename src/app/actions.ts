@@ -492,6 +492,16 @@ export async function getAllUsersWithStatus() {
         nameApiResult.data.forEach(item => {
             nameMap.set(item.uid, item.name);
         });
+
+        // display_name が NULL のユーザーを DB にキャッシュ（バックグラウンド）
+        const uncached = members?.filter(m => !m.display_name && m.discord_uid && nameMap.has(m.discord_uid)) || [];
+        if (uncached.length > 0) {
+            Promise.all(uncached.map(m =>
+                supabase.schema('member').from('members')
+                    .update({ display_name: nameMap.get(m.discord_uid!) })
+                    .eq('supabase_auth_user_id', m.supabase_auth_user_id)
+            )).then(() => console.log(`Cached display_name for ${uncached.length} users`));
+        }
     }
 
     const memberIds = members?.map(m => m.supabase_auth_user_id) || [];

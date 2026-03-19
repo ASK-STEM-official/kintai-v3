@@ -18,6 +18,7 @@ import DashboardNav from "./components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getOAuthUser } from "@/lib/auth";
 import { FormButton } from "@/components/ui/loading-button";
+import { fetchMemberNickname } from "@/lib/name-api";
 
 function UserProfile({ avatarUrl, email, displayName }: { avatarUrl?: string | null; email?: string | null; displayName: string }) {
   const initials = displayName.charAt(0).toUpperCase() || 'U';
@@ -120,7 +121,7 @@ export default async function DashboardLayout({
     adminClient
       .schema('member')
       .from('members')
-      .select('is_admin, display_name')
+      .select('is_admin, display_name, discord_uid')
       .eq('supabase_auth_user_id', userId)
       .single(),
     adminClient
@@ -144,7 +145,20 @@ export default async function DashboardLayout({
       .then(() => {});
   }
 
-  const displayName = profileResult.data.display_name || oauthUser?.displayName || '名無しさん';
+  let displayName = profileResult.data.display_name || oauthUser?.displayName || '';
+
+  // display_name が未設定なら Bot API から取得してキャッシュ（fire-and-forget）
+  if (!displayName && profileResult.data.discord_uid) {
+    const { data: nickname } = await fetchMemberNickname(profileResult.data.discord_uid);
+    if (nickname) {
+      displayName = nickname;
+      adminClient.schema('member').from('members')
+        .update({ display_name: nickname })
+        .eq('supabase_auth_user_id', userId)
+        .then(() => {});
+    }
+  }
+  displayName = displayName || '名無しさん';
   const isAdmin = profileResult.data.is_admin;
 
   return (
