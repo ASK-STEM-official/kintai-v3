@@ -419,7 +419,7 @@ export async function getMonthlyAttendanceSummary(month: Date) {
 
 
 export async function calculateTotalActivityTime(userId: string, days: number): Promise<number> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await createSupabaseAdminClient();
   const startDate = subDays(new Date(), days).toISOString();
 
   const { data: attendances, error } = await supabase
