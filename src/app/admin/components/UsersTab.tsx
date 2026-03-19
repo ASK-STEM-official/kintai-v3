@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowUpDown, Search, RefreshCw, Edit, Eye, Filter } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { forceToggleAttendance, updateAllUserDisplayNames, updateUserCardId } from '@/app/actions';
+import { forceToggleAttendance, updateAllUserDisplayNames, updateUserCardId, fetchAllUserRealNames } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 import { convertGenerationToGrade } from '@/lib/utils';
@@ -54,6 +54,7 @@ import Link from "next/link";
 type UserWithDetails = {
     id: string;
     display_name: string;
+    discord_username: string | null;
     card_id: string | null;
     team_name: string | null;
     team_id: string | null;
@@ -168,6 +169,32 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     const [editingUser, setEditingUser] = useState<{ id: string; currentCardId: string } | null>(null);
     const [newCardId, setNewCardId] = useState('');
     
+    // 本名表示トグル
+    const [showRealName, setShowRealName] = useState(false);
+    const [realNameMap, setRealNameMap] = useState<Record<string, string>>({});
+    const [realNamesLoaded, setRealNamesLoaded] = useState(false);
+    const [isLoadingRealNames, startLoadingRealNames] = useTransition();
+
+    const handleShowRealNameChange = (checked: boolean) => {
+        setShowRealName(checked);
+        if (checked && !realNamesLoaded) {
+            startLoadingRealNames(async () => {
+                const result = await fetchAllUserRealNames();
+                if (result.data) {
+                    setRealNameMap(result.data);
+                    setRealNamesLoaded(true);
+                } else {
+                    toast({
+                        variant: "destructive",
+                        title: "エラー",
+                        description: "本名の取得に失敗しました。",
+                    });
+                    setShowRealName(false);
+                }
+            });
+        }
+    };
+
     // フィルター状態
     const [filterStatus, setFilterStatus] = useState<StatusFilter>('active'); // デフォルトでOB/OG除外
     const [filterAttendance, setFilterAttendance] = useState<AttendanceStatus>('all'); // 出勤状態
@@ -221,9 +248,12 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     const sortedAndFilteredUsers = useMemo(() => {
         let filtered = initialUsers.filter(user => {
             // テキスト検索
-            const matchesSearch = user.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (user.card_id && user.card_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                (user.student_number && user.student_number.toLowerCase().includes(searchTerm.toLowerCase()));
+            const term = searchTerm.toLowerCase();
+            const realName = realNameMap[user.id];
+            const matchesSearch = user.display_name?.toLowerCase().includes(term) ||
+                (realName && realName.toLowerCase().includes(term)) ||
+                (user.card_id && user.card_id.toLowerCase().includes(term)) ||
+                (user.student_number && user.student_number.toLowerCase().includes(term));
             
             if (!matchesSearch) return false;
             
@@ -266,7 +296,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
         });
         
         return filtered;
-    }, [initialUsers, searchTerm, sort, filterStatus, filterAttendance, filterHasCardId]);
+    }, [initialUsers, searchTerm, sort, filterStatus, filterAttendance, filterHasCardId, realNameMap]);
 
   return (
      <Card>
@@ -287,6 +317,20 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-9"
                         />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Checkbox
+                            id="show-real-name"
+                            checked={showRealName}
+                            onCheckedChange={(checked) => handleShowRealNameChange(!!checked)}
+                            disabled={isLoadingRealNames}
+                        />
+                        <label
+                            htmlFor="show-real-name"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 whitespace-nowrap"
+                        >
+                            {isLoadingRealNames ? '取得中...' : '本名を表示'}
+                        </label>
                     </div>
                     <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
                         <Filter className="mr-2 h-4 w-4" />
@@ -400,7 +444,12 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         const attendanceStatus = getAttendanceStatus(user.latest_attendance_type, user.latest_timestamp);
                         return (
                         <TableRow key={user.id} className={isToggling ? 'opacity-50' : ''}>
-                            <TableCell className="font-medium">{user.display_name}</TableCell>
+                            <TableCell className="font-medium">
+                                {showRealName
+                                    ? (realNameMap[user.id] || user.display_name)
+                                    : user.display_name
+                                }
+                            </TableCell>
                             <TableCell>{convertGenerationToGrade(user.generation)}</TableCell>
                             <TableCell>
                                 <Badge variant="outline">{getStatusLabel(user.status)}</Badge>
@@ -438,7 +487,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                             <DialogHeader>
                                                 <DialogTitle>カードIDを変更</DialogTitle>
                                                 <DialogDescription>
-                                                    {user.display_name} さんのカードIDを変更します
+                                                    {showRealName ? (realNameMap[user.id] || user.display_name) : user.display_name} さんのカードIDを変更します
                                                 </DialogDescription>
                                             </DialogHeader>
                                             <div className="grid gap-4 py-4">

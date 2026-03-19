@@ -454,8 +454,8 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
 
-    // メンバー、勤怠ユーザー、名前を全て並列取得
-    const [membersResult, attendanceUsersResult, nameApiResult] = await Promise.all([
+    // メンバー、勤怠ユーザー、auth情報を並列取得（Bot API は呼ばない — 高速化）
+    const [membersResult, attendanceUsersResult, authUsersResult] = await Promise.all([
       supabase
         .schema('member')
         .from('members')
@@ -467,14 +467,13 @@ export async function getAllUsersWithStatus() {
             student_number,
             status,
             deleted_at,
-            display_name,
             member_team_relations(team_id, teams(name))
         `),
       supabase
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id, card_id'),
-      fetchAllMemberNames(),
+      supabase.auth.admin.listUsers({ perPage: 1000 }),
     ]);
 
     const { data: members, error: membersError } = membersResult;
@@ -486,22 +485,15 @@ export async function getAllUsersWithStatus() {
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
-    // バッチAPIの結果からnameMapを構築（N+1 APIコール排除）
-    const nameMap = new Map<string, string>();
-    if (nameApiResult.data) {
-        nameApiResult.data.forEach(item => {
-            nameMap.set(item.uid, item.name);
+    // auth.users から Discord ユーザー名を取得
+    const discordUsernameMap = new Map<string, string>();
+    if (authUsersResult.data?.users) {
+        authUsersResult.data.users.forEach(u => {
+            const username = u.user_metadata?.user_name || u.user_metadata?.name || null;
+            if (username) {
+                discordUsernameMap.set(u.id, username.split('#')[0]);
+            }
         });
-
-        // display_name が NULL のユーザーを DB にキャッシュ（バックグラウンド）
-        const uncached = members?.filter(m => !m.display_name && m.discord_uid && nameMap.has(m.discord_uid)) || [];
-        if (uncached.length > 0) {
-            Promise.all(uncached.map(m =>
-                supabase.schema('member').from('members')
-                    .update({ display_name: nameMap.get(m.discord_uid!) })
-                    .eq('supabase_auth_user_id', m.supabase_auth_user_id)
-            )).then(() => console.log(`Cached display_name for ${uncached.length} users`));
-        }
     }
 
     const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
@@ -526,13 +518,12 @@ export async function getAllUsersWithStatus() {
     const users = members?.map((member: any) => {
         const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
         const teamRelation = member.member_team_relations?.[0];
-        // DB display_name → バッチAPI名 → 名無しさん
-        const realName = member.display_name
-            || (member.discord_uid ? nameMap.get(member.discord_uid) : null);
+        const discordName = discordUsernameMap.get(member.supabase_auth_user_id) || null;
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: realName || '名無しさん',
+            display_name: discordName ? `@${discordName}` : member.discord_uid || '不明',
+            discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
             team_id: teamRelation?.team_id || null,
@@ -547,6 +538,59 @@ export async function getAllUsersWithStatus() {
     }) || [];
 
     return { data: users, error: null };
+}
+
+/**
+ * 本名を遅延取得する（チェックボックス押下時に呼ばれる）。
+ * DB キャッシュ → Bot API フォールバック。
+ * 返り値: { [supabase_auth_user_id]: realName }
+ */
+export async function fetchAllUserRealNames(): Promise<{ data: Record<string, string> | null; error: string | null }> {
+    const supabase = await createSupabaseAdminClient();
+
+    // DB から display_name（本名キャッシュ）を取得
+    const { data: members, error } = await supabase
+        .schema('member')
+        .from('members')
+        .select('supabase_auth_user_id, discord_uid, display_name')
+        .is('deleted_at', null);
+
+    if (error) {
+        console.error('fetchAllUserRealNames: DB error', error);
+        return { data: null, error: error.message };
+    }
+
+    const result: Record<string, string> = {};
+    const missing: typeof members = [];
+
+    for (const m of members || []) {
+        if (m.display_name) {
+            result[m.supabase_auth_user_id] = m.display_name;
+        } else if (m.discord_uid) {
+            missing.push(m);
+        }
+    }
+
+    // キャッシュに無いユーザーは Bot API で取得してキャッシュ
+    if (missing.length > 0) {
+        const nameApiResult = await fetchAllMemberNames();
+        if (nameApiResult.data) {
+            const nameMap = new Map(nameApiResult.data.map(item => [item.uid, item.name]));
+            for (const m of missing) {
+                const name = nameMap.get(m.discord_uid!);
+                if (name) {
+                    result[m.supabase_auth_user_id] = name;
+                    // DB にキャッシュ（fire-and-forget）
+                    supabase.schema('member').from('members')
+                        .update({ display_name: name })
+                        .eq('supabase_auth_user_id', m.supabase_auth_user_id)
+                        .then(() => {});
+                }
+            }
+        }
+    }
+
+    return { data: result, error: null };
 }
 
 export async function getAllTeams() {
