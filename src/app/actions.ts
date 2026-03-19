@@ -473,7 +473,7 @@ export async function getAllUsersWithStatus() {
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id, card_id'),
-      supabase.auth.admin.listUsers({ perPage: 1000 }),
+      supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     ]);
 
     const { data: members, error: membersError } = membersResult;
@@ -487,23 +487,43 @@ export async function getAllUsersWithStatus() {
 
     // auth.users から Discord ユーザー名（一意のハンドル）を取得
     const discordUsernameMap = new Map<string, string>();
-    if (authUsersResult.data?.users) {
-        authUsersResult.data.users.forEach(u => {
-            // user_metadata.user_name → identities の user_name を探す
-            let username: string | null = u.user_metadata?.user_name || null;
-            if (!username && u.identities) {
-                for (const id of u.identities) {
-                    if (id.provider === 'discord' && id.identity_data?.user_name) {
-                        username = id.identity_data.user_name;
-                        break;
-                    }
+    if (authUsersResult.error) {
+        console.error('Error fetching auth users:', authUsersResult.error);
+    }
+    const authUsers = authUsersResult.data?.users || [];
+    if (authUsers.length > 0) {
+        // 最初のユーザーの metadata をログ出力（デバッグ用）
+        const sample = authUsers[0];
+        console.log('[getAllUsersWithStatus] sample user_metadata keys:', Object.keys(sample.user_metadata || {}));
+        console.log('[getAllUsersWithStatus] sample identity providers:', sample.identities?.map(i => i.provider));
+        if (sample.identities?.[0]) {
+            console.log('[getAllUsersWithStatus] sample identity_data keys:', Object.keys(sample.identities[0].identity_data || {}));
+        }
+    }
+    authUsers.forEach(u => {
+        // 複数のフィールド名を試す（Supabase版によって異なる）
+        const meta = u.user_metadata || {};
+        let username: string | null =
+            meta.user_name ||
+            meta.preferred_username ||
+            meta.custom_claims?.global_name ||
+            null;
+
+        // identities からも探す
+        if (!username && u.identities) {
+            for (const id of u.identities) {
+                if (id.provider === 'discord') {
+                    const idData = id.identity_data || {};
+                    username = idData.user_name || idData.preferred_username || idData.custom_claims?.global_name || null;
+                    break;
                 }
             }
-            if (username) {
-                discordUsernameMap.set(u.id, username.split('#')[0]);
-            }
-        });
-    }
+        }
+
+        if (username) {
+            discordUsernameMap.set(u.id, username.split('#')[0]);
+        }
+    });
 
     const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
 
