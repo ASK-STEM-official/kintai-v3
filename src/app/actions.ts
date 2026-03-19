@@ -485,11 +485,20 @@ export async function getAllUsersWithStatus() {
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
-    // auth.users から Discord ユーザー名を取得
+    // auth.users から Discord ユーザー名（一意のハンドル）を取得
     const discordUsernameMap = new Map<string, string>();
     if (authUsersResult.data?.users) {
         authUsersResult.data.users.forEach(u => {
-            const username = u.user_metadata?.user_name || null;
+            // user_metadata.user_name → identities の user_name を探す
+            let username: string | null = u.user_metadata?.user_name || null;
+            if (!username && u.identities) {
+                for (const id of u.identities) {
+                    if (id.provider === 'discord' && id.identity_data?.user_name) {
+                        username = id.identity_data.user_name;
+                        break;
+                    }
+                }
+            }
             if (username) {
                 discordUsernameMap.set(u.id, username.split('#')[0]);
             }
@@ -522,7 +531,7 @@ export async function getAllUsersWithStatus() {
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName || member.discord_uid || '不明',
+            display_name: discordName || '不明',
             discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
