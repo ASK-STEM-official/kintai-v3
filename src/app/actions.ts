@@ -454,14 +454,15 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
 
-    // メンバー、勤怠ユーザー、Bot API を並列取得
-    const [membersResult, attendanceUsersResult, botApiResult] = await Promise.all([
+    // メンバー、勤怠ユーザーを並列取得（Bot API は呼ばない — DB から読む）
+    const [membersResult, attendanceUsersResult] = await Promise.all([
       supabase
         .schema('member')
         .from('members')
         .select(`
             supabase_auth_user_id,
             discord_uid,
+            discord_username,
             generation,
             is_admin,
             student_number,
@@ -473,7 +474,6 @@ export async function getAllUsersWithStatus() {
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id, card_id'),
-      fetchAllMemberNames(),
     ]);
 
     const { data: members, error: membersError } = membersResult;
@@ -485,13 +485,20 @@ export async function getAllUsersWithStatus() {
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
 
-    // Bot API から Discord ユーザー名（一意ハンドル）を取得
-    const discordUsernameMap = new Map<string, string>();
-    if (botApiResult.data) {
-        botApiResult.data.forEach(item => {
-            if (item.username) {
-                discordUsernameMap.set(item.uid, item.username);
-            }
+    // discord_username が NULL のユーザーを Bot API でバックフィル（バックグラウンド）
+    const uncachedUsernames = members?.filter(m => !m.discord_username && m.discord_uid) || [];
+    if (uncachedUsernames.length > 0) {
+        fetchAllMemberNames().then(result => {
+            if (!result.data) return;
+            const usernameMap = new Map(result.data.filter(i => i.username).map(i => [i.uid, i.username!]));
+            Promise.all(uncachedUsernames
+                .filter(m => usernameMap.has(m.discord_uid))
+                .map(m =>
+                    supabase.schema('member').from('members')
+                        .update({ discord_username: usernameMap.get(m.discord_uid!) })
+                        .eq('supabase_auth_user_id', m.supabase_auth_user_id)
+                )
+            ).then(() => console.log(`Backfilled discord_username for ${uncachedUsernames.length} users`));
         });
     }
 
@@ -517,12 +524,10 @@ export async function getAllUsersWithStatus() {
     const users = members?.map((member: any) => {
         const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
         const teamRelation = member.member_team_relations?.[0];
-        const discordName = member.discord_uid ? discordUsernameMap.get(member.discord_uid) || null : null;
-
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName || '不明',
-            discord_username: discordName,
+            display_name: member.discord_username || '不明',
+            discord_username: member.discord_username || null,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
             team_id: teamRelation?.team_id || null,
