@@ -489,7 +489,7 @@ export async function getAllUsersWithStatus() {
     const discordUsernameMap = new Map<string, string>();
     if (authUsersResult.data?.users) {
         authUsersResult.data.users.forEach(u => {
-            const username = u.user_metadata?.user_name || u.user_metadata?.name || null;
+            const username = u.user_metadata?.user_name || null;
             if (username) {
                 discordUsernameMap.set(u.id, username.split('#')[0]);
             }
@@ -522,7 +522,7 @@ export async function getAllUsersWithStatus() {
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName ? `@${discordName}` : member.discord_uid || '不明',
+            display_name: discordName || member.discord_uid || '不明',
             discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
