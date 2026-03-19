@@ -1,6 +1,5 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '@/lib/types'
 
@@ -51,17 +50,33 @@ export async function createSupabaseAdminClient() {
     if (!supabaseUrl || !supabaseServiceKey) {
         throw new Error('Supabase URL or Service Role Key is not set. Please check your .env.local file.');
     }
-    
-    // Service Role Key用のクライアントはCookieを使わない
-    // これにより、service_roleとして動作し、RLSをバイパスできる
-    return createClient<Database>(
+
+    const cookieStore = await cookies();
+
+    // stem-system と同じ createServerClient ベースで作成
+    // auth.admin.listUsers() 等が正しく動作するために必要
+    return createServerClient<Database>(
         supabaseUrl,
         supabaseServiceKey,
         {
             auth: {
                 persistSession: false,
                 autoRefreshToken: false,
-            }
+            },
+            cookies: {
+                getAll() {
+                    return cookieStore.getAll();
+                },
+                setAll(cookiesToSet) {
+                    try {
+                        cookiesToSet.forEach(({ name, value, options }) =>
+                            cookieStore.set(name, value, options)
+                        );
+                    } catch {
+                        // Server Component からの呼び出し時は無視
+                    }
+                },
+            },
         }
     );
 }

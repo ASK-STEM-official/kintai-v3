@@ -551,7 +551,7 @@ export async function getAllUsersWithStatus() {
 
         return {
             id: member.supabase_auth_user_id,
-            display_name: discordName || '不明',
+            display_name: discordName ? `@${discordName}` : '不明',
             discord_username: discordName,
             card_id: cardMap.get(member.supabase_auth_user_id) || null,
             team_name: teamRelation?.teams?.name || null,
