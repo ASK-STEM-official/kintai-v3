@@ -4,13 +4,15 @@ import UsersTab from "./components/UsersTab";
 import LogsTab from "./components/LogsTab";
 import SystemTab from "./components/SystemTab";
 import { getAllUsersWithStatus, getAllTeams, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
-import { User, History, Power, FilePenLine } from "lucide-react";
+import { User, History, AlertCircle, Power, FilePenLine } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import TempRegistrationsTab from "./components/TempRegistrationsTab";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  // 認証は admin/layout.tsx で保証済み
+  const { userId } = await requireAuth();
 
   const [
     usersResult,
@@ -71,10 +73,10 @@ export default async function AdminPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="users">
-          <UsersTab 
-            users={users || []} 
-            teams={teams || []} 
-            currentUser={currentUser}
+          <UsersTab
+            users={users || []}
+            teams={teams || []}
+            currentUser={{ id: userId } as any}
           />
         </TabsContent>
          <TabsContent value="temp_registrations">
