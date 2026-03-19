@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { BarChart, Calendar as CalendarIcon, Clock, Percent } from "lucide-react";
 import {
   Table,
@@ -18,18 +17,14 @@ import { calculateTotalActivityTime } from "../actions";
 import { convertGenerationToGrade, formatJst } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { toZonedTime } from "date-fns-tz";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = 'force-dynamic';
 
 const timeZone = 'Asia/Tokyo';
 
 export default async function DashboardPage() {
-    const supabase = await createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect('/login');
-    }
+    const { userId, supabase } = await requireAuth();
 
     // プロフィールと勤怠ユーザーを並列取得
     const [profileResult, attendanceUserResult] = await Promise.all([
@@ -44,13 +39,13 @@ export default async function DashboardPage() {
             display_name,
             member_team_relations(teams(name))
         `)
-        .eq('supabase_auth_user_id', user!.id)
+        .eq('supabase_auth_user_id', userId)
         .single(),
       supabase
         .schema('attendance')
         .from('users')
         .select('card_id')
-        .eq('supabase_auth_user_id', user!.id)
+        .eq('supabase_auth_user_id', userId)
         .single(),
     ]);
 
@@ -81,13 +76,13 @@ export default async function DashboardPage() {
 
     // 出勤データの取得を全て並列化
     const [attendancesResult, totalActivityTimeInHours, distinctDatesResult, totalClubActivityDatesResult] = await Promise.all([
-      supabase.schema('attendance').from('attendances').select('*').eq('user_id', user!.id).order('timestamp', { ascending: false }).limit(5),
-      calculateTotalActivityTime(user!.id, 30),
+      supabase.schema('attendance').from('attendances').select('*').eq('user_id', userId).order('timestamp', { ascending: false }).limit(5),
+      calculateTotalActivityTime(userId, 30),
       supabase
         .schema('attendance')
         .from('attendances')
         .select('date')
-        .eq('user_id', user!.id)
+        .eq('user_id', userId)
         .eq('type', 'in')
         .gte('date', thirtyDaysAgo),
       supabase
@@ -214,7 +209,7 @@ export default async function DashboardPage() {
                 <CardTitle>出勤カレンダー</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <AttendanceCalendar userId={user!.id} />
+                    <AttendanceCalendar userId={userId} />
                 </CardContent>
             </Card>
         </div>

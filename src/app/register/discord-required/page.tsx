@@ -1,17 +1,12 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
+import { requireAuth } from '@/lib/auth';
 
 export default async function DiscordRequiredPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    redirect('/login');
-  }
+  await requireAuth();
 
   const discordInviteUrl = process.env.NEXT_PUBLIC_DISCORD_INVITE_URL || 'https://discord.gg/vujJCHkANj';
 

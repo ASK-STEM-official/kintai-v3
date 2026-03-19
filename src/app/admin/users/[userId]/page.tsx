@@ -1,4 +1,3 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import {toZonedTime} from "date-fns-tz";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = 'force-dynamic';
 
@@ -28,25 +28,20 @@ const timeZone = 'Asia/Tokyo';
 
 export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
     const resolvedParams = await params;
-    const supabase = await createSupabaseServerClient();
-    
+    const { userId, supabase } = await requireAuth();
+
     // 現在のユーザーが管理者かチェック
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    if (!currentUser) {
-        redirect('/login');
-    }
-    
     const { data: currentProfile } = await supabase
         .schema('member')
         .from('members')
         .select('is_admin')
-        .eq('supabase_auth_user_id', currentUser.id)
+        .eq('supabase_auth_user_id', userId)
         .single();
-    
+
     if (!currentProfile?.is_admin) {
         redirect('/dashboard');
     }
-    
+
     // 対象ユーザーの情報を取得
     const { data: profile, error: profileError } = await supabase
         .schema('member')

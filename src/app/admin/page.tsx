@@ -1,30 +1,16 @@
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UsersTab from "./components/UsersTab";
 import LogsTab from "./components/LogsTab";
 import SystemTab from "./components/SystemTab";
 import { getAllUsersWithStatus, getAllTeams, getAllDailyLogoutLogs, getTempRegistrations } from "../actions";
-import { User, History, AlertCircle, Power, FilePenLine } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { User, History, Power, FilePenLine } from "lucide-react";
 import TempRegistrationsTab from "./components/TempRegistrationsTab";
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user: currentUser } } = await supabase.auth.getUser();
-
-  if (!currentUser) {
-    // This case should be handled by layout, but as a safeguard.
-    return (
-       <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Authentication Error</AlertTitle>
-            <AlertDescription>Could not retrieve user session.</AlertDescription>
-        </Alert>
-    );
-  }
+  // 認証は admin/layout.tsx で保証済み
 
   const [
     usersResult,

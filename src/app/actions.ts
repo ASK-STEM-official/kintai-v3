@@ -324,6 +324,11 @@ export async function signInWithDiscord(formData?: FormData) {
 }
 
 export async function signOut() {
+    // OAuth cookie をクリア
+    const cookieStore = await cookies();
+    cookieStore.delete('oauth_access_token');
+    cookieStore.delete('oauth_user_id');
+
     const supabase = await createSupabaseServerClient();
     await supabase.auth.signOut();
     revalidatePath('/', 'layout');

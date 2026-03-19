@@ -1,14 +1,9 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import CardUnregisteredClient from './page-client';
+import { requireAuth } from '@/lib/auth';
 
 export default async function CardUnregisteredPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
-    redirect('/login');
-  }
+  const { userId } = await requireAuth();
 
-  return <CardUnregisteredClient userId={user.id} />;
+  return <CardUnregisteredClient userId={userId} />;
 }

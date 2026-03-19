@@ -17,20 +17,21 @@ import { Menu } from "lucide-react";
 import DashboardNav from "./components/DashboardNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkDiscordMembership } from "@/app/actions";
+import { getOAuthUser } from "@/lib/auth";
 
-async function UserProfile({ user, displayName }: { user: any; displayName: string }) {
+async function UserProfile({ avatarUrl, email, displayName }: { avatarUrl?: string | null; email?: string | null; displayName: string }) {
   const initials = displayName.charAt(0).toUpperCase() || 'U';
-  
+
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
         <Avatar>
-            <AvatarImage src={user.user_metadata.avatar_url} alt={displayName} />
+            {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
             <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
         <div className="flex flex-col">
             <span className="font-semibold text-sm">{displayName}</span>
-            <span className="text-xs text-muted-foreground">{user.email}</span>
+            {email && <span className="text-xs text-muted-foreground">{email}</span>}
         </div>
       </div>
        <form action={signOut}>
@@ -42,7 +43,7 @@ async function UserProfile({ user, displayName }: { user: any; displayName: stri
   )
 }
 
-function MainSidebar({ user, isAdmin, displayName }: { user: any, isAdmin: boolean, displayName: string }) {
+function MainSidebar({ avatarUrl, email, isAdmin, displayName }: { avatarUrl?: string | null, email?: string | null, isAdmin: boolean, displayName: string }) {
   return (
     <>
       <SidebarHeader>
@@ -58,13 +59,13 @@ function MainSidebar({ user, isAdmin, displayName }: { user: any, isAdmin: boole
         <DashboardNav isAdmin={isAdmin} />
       </SidebarContent>
       <SidebarFooter>
-        <UserProfile user={user} displayName={displayName} />
+        <UserProfile avatarUrl={avatarUrl} email={email} displayName={displayName} />
       </SidebarFooter>
     </>
   )
 }
 
-function MobileHeader({ user, isAdmin, displayName }: { user: any, isAdmin: boolean, displayName: string }) {
+function MobileHeader({ isAdmin, displayName }: { isAdmin: boolean, displayName: string }) {
     return (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 sm:hidden">
             <Sheet>
@@ -76,7 +77,7 @@ function MobileHeader({ user, isAdmin, displayName }: { user: any, isAdmin: bool
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs flex flex-col p-0">
                     <SheetTitle className="sr-only">ナビゲーションメニュー</SheetTitle>
-                    <MainSidebar user={user} isAdmin={isAdmin} displayName={displayName} />
+                    <MainSidebar isAdmin={isAdmin} displayName={displayName} />
                 </SheetContent>
             </Sheet>
             <div className="ml-auto">
@@ -91,6 +92,63 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // 1. OAuth セッションを先にチェック
+  const oauthUser = await getOAuthUser();
+
+  if (oauthUser) {
+    // OAuth 認証済み — admin client で DB 問い合わせ（Supabase セッション不要）
+    const adminClient = await createSupabaseAdminClient();
+
+    const { data: profile } = await adminClient
+      .schema('member')
+      .from('members')
+      .select('is_admin, discord_uid, display_name')
+      .eq('supabase_auth_user_id', oauthUser.id)
+      .single();
+
+    if (!profile) {
+      return redirect("/register/member-unregistered");
+    }
+
+    // attendance.users が無ければ自動作成
+    const { data: attendanceUser, error: attendanceError } = await adminClient
+      .schema('attendance')
+      .from('users')
+      .select('card_id')
+      .eq('supabase_auth_user_id', oauthUser.id)
+      .single();
+
+    if (attendanceError?.code === 'PGRST116' || !attendanceUser) {
+      await adminClient
+        .schema('attendance')
+        .from('users')
+        .insert({
+          supabase_auth_user_id: oauthUser.id,
+          card_id: `TEMP_${oauthUser.id}`,
+        });
+    }
+
+    const displayName = profile.display_name || oauthUser.displayName;
+    const isAdmin = profile.is_admin;
+
+    return (
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
+          <Sidebar className="hidden sm:flex">
+              <MainSidebar isAdmin={isAdmin} displayName={displayName} />
+          </Sidebar>
+          <div className="flex flex-1 flex-col">
+            <MobileHeader isAdmin={isAdmin} displayName={displayName} />
+            <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
+                {children}
+            </main>
+          </div>
+        </div>
+      </SidebarProvider>
+    );
+  }
+
+  // 2. Supabase セッションにフォールバック
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -158,7 +216,7 @@ export default async function DashboardLayout({
   // attendanceUserレコード自体が存在しない場合は自動作成
   if (attendanceError?.code === 'PGRST116' || !attendanceUser) {
     console.log('No attendance user record found, auto-creating with temp card_id:', user.id);
-    
+
     // attendance.users レコードを自動作成
     const adminClient = await createSupabaseAdminClient();
     const { error: createError } = await adminClient
@@ -166,16 +224,15 @@ export default async function DashboardLayout({
       .from('users')
       .insert({
         supabase_auth_user_id: user.id,
-        card_id: `TEMP_${user.id}`,  // 一時的なカードID（後でQRコードで実際のカードIDに更新可能）
+        card_id: `TEMP_${user.id}`,
       });
-    
+
     if (createError) {
       console.error('Failed to auto-create attendance user:', createError);
       return redirect("/register/card-unregistered");
     }
-    
+
     console.log('Auto-created attendance.users record with temp card_id');
-    // 作成後、そのまま続行（attendanceUserは使われない）
   } else if (attendanceError) {
     console.error('Unexpected error fetching attendance user:', attendanceError);
     return redirect("/register/card-unregistered");
@@ -187,10 +244,10 @@ export default async function DashboardLayout({
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar className="hidden sm:flex">
-            <MainSidebar user={user} isAdmin={isAdmin} displayName={displayName} />
+            <MainSidebar avatarUrl={user.user_metadata?.avatar_url} email={user.email} isAdmin={isAdmin} displayName={displayName} />
         </Sidebar>
         <div className="flex flex-1 flex-col">
-          <MobileHeader user={user} isAdmin={isAdmin} displayName={displayName} />
+          <MobileHeader isAdmin={isAdmin} displayName={displayName} />
           <main className="flex-1 p-2 sm:p-4 bg-secondary/50">
               {children}
           </main>

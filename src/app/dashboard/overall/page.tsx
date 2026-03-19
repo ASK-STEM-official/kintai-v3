@@ -1,30 +1,25 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Users, Calendar as CalendarIcon, Clock, TrendingUp } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getOverallStats } from "@/app/actions";
 import OverallAttendanceCalendar from "../components/OverallAttendanceCalendar";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = 'force-dynamic';
 
 export default async function OverallDashboardPage() {
-    const supabase = await createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect('/login');
-    }
+    const { userId, supabase } = await requireAuth();
 
     const { data: profile, error: profileError } = await supabase
         .schema('member')
         .from('members')
         .select('is_admin')
-        .eq('supabase_auth_user_id', user!.id)
+        .eq('supabase_auth_user_id', userId)
         .single();
-    
+
     if (profileError || !profile) {
         console.error('Profile fetch error:', profileError);
-        console.error('User ID:', user.id);
+        console.error('User ID:', userId);
         redirect('/register/member-unregistered');
     }
 
