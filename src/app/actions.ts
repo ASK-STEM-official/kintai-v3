@@ -3,6 +3,7 @@
 'use server';
 
 import { createSupabaseAdminClient, createSupabaseServerClient } from '@/lib/supabase/server';
+import { getOAuthUser } from '@/lib/auth';
 import { Database, Tables, TablesInsert, TablesUpdate } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
@@ -87,6 +88,35 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   return { ...result, user: result.user ? userWithoutDiscordUid : null };
 }
 
+
+export async function recordAttendanceWithToken(token: string): Promise<{
+  success: boolean;
+  message: string;
+  user: { display_name: string | null } | null;
+  type: 'in' | 'out' | null;
+}> {
+  const oauthUser = await getOAuthUser();
+  if (!oauthUser) {
+    return { success: false, message: '認証されていません。', user: null, type: null };
+  }
+  const supabase = await createSupabaseAdminClient();
+  const { data, error } = await supabase.schema('attendance').rpc('record_attendance_with_token', {
+    p_user_id: oauthUser.id,
+    p_token: token,
+  });
+  if (error) {
+    console.error('QR check-in RPC error:', error);
+    return { success: false, message: '打刻処理中にエラーが発生しました。', user: null, type: null };
+  }
+  const result = data as {
+    success: boolean;
+    message: string;
+    user: { display_name: string | null } | null;
+    type: 'in' | 'out' | null;
+  };
+  if (result.user && !result.user.display_name) result.user.display_name = '名無しさん';
+  return result;
+}
 
 const processSubmission = async (submissionType: 'idle' | 'register', cardId: string) => {
     if (submissionType === 'register') {

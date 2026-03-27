@@ -3,7 +3,7 @@
 import { generateCodeVerifier, generateCodeChallenge, generateState, buildAuthorizationUrl } from '@/lib/oauth/pkce';
 import { cookies } from 'next/headers';
 
-export async function signInWithSTEM(): Promise<{ url: string }> {
+export async function signInWithSTEM(next?: string): Promise<{ url: string }> {
   const oauthBaseUrl = (process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || 'http://localhost:3000/oauth').replace(/\/$/, '');
   const clientId = process.env.STEM_OAUTH_CLIENT_ID!;
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001').replace(/\/$/, '');
@@ -31,6 +31,16 @@ export async function signInWithSTEM(): Promise<{ url: string }> {
     maxAge: 60 * 10,
     path: '/',
   });
+
+  if (next) {
+    cookieStore.set('auth_next', next, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 10,
+      path: '/',
+    });
+  }
 
   const authUrl = buildAuthorizationUrl({
     authorizationEndpoint: `${oauthBaseUrl}/authorize`,

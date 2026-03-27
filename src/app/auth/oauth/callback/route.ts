@@ -98,9 +98,11 @@ export async function GET(request: Request) {
     cookieStore.delete('oauth_state');
     cookieStore.delete('oauth_code_verifier');
 
-    // ダッシュボードにリダイレクト
-    return redirect('/');
-    
+    // auth_next cookieがあればそこへ、なければダッシュボードへ
+    const authNext = cookieStore.get('auth_next')?.value;
+    cookieStore.delete('auth_next');
+    return redirect(authNext || '/');
+
   } catch (error) {
     // redirect() は内部的に特殊なエラーを throw するので再 throw する
     if (error instanceof Error && error.message === 'NEXT_REDIRECT') throw error;

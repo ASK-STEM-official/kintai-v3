@@ -100,31 +100,54 @@ const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
 WbgtDisplay.displayName = 'WbgtDisplay';
 
 
-const IdleScreen = memo(({ wbgtData }: { wbgtData: WbgtData }) => (
-  <div className="flex flex-col h-full w-full justify-between p-6">
-    <header className="w-full flex justify-between items-start text-xl">
-      <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
-      <div className="flex flex-col items-end gap-2">
-        <WbgtDisplay wbgt={wbgtData.wbgt} />
+const IdleScreen = memo(({ wbgtData, checkinToken }: { wbgtData: WbgtData; checkinToken: string | null }) => {
+  const checkinUrl = checkinToken
+    ? `${process.env.NEXT_PUBLIC_APP_URL}/checkin/${checkinToken}`
+    : null;
+  return (
+    <div className="flex flex-col h-full w-full justify-between p-6">
+      <header className="w-full flex justify-between items-start text-xl">
+        <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
+        <div className="flex flex-col items-end gap-2">
+          <WbgtDisplay wbgt={wbgtData.wbgt} />
+        </div>
+      </header>
+      <div className="flex-grow w-full flex items-center justify-center overflow-y-auto py-4 gap-16">
+        <Clock />
+        <div className="flex flex-col items-center gap-3">
+          {checkinUrl ? (
+            <div className="bg-white p-3 rounded-lg shadow-md">
+              <Image
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkinUrl)}`}
+                width={200}
+                height={200}
+                alt="出退勤QRコード"
+                priority
+              />
+            </div>
+          ) : (
+            <div className="w-[224px] h-[224px] bg-gray-800 rounded-lg flex items-center justify-center">
+              <p className="text-gray-500 text-sm">QR生成中...</p>
+            </div>
+          )}
+          <p className="text-gray-300 text-lg">カードがない方はQRで出退勤</p>
+        </div>
       </div>
-    </header>
-    <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4 space-y-8">
-      <Clock />
+      <footer className="w-full text-center">
+        <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
+        <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
+        <div className="text-gray-500 mt-8">
+          新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
+        </div>
+        <div className="mt-6 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+          <p className="text-yellow-300 text-lg">
+            このシステムを知らない、もしくは「カードが未登録」と出た方は部長まで連絡してください
+          </p>
+        </div>
+      </footer>
     </div>
-    <footer className="w-full text-center">
-      <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
-      <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
-      <div className="text-gray-500 mt-8">
-        新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
-      </div>
-      <div className="mt-6 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
-        <p className="text-yellow-300 text-lg">
-          📢 このシステムを知らない、もしくは「カードが未登録」と出た方は部長まで連絡してください
-        </p>
-      </div>
-    </footer>
-  </div>
-));
+  );
+});
 IdleScreen.displayName = 'IdleScreen';
 
 const SuccessScreen = memo(({ message, subMessage, attendanceType }: { message: string, subMessage: string, attendanceType: AttendanceType }) => (
@@ -245,7 +268,8 @@ export default function KioskPage() {
   const [qrExpiry, setQrExpiry] = useState<number>(0);
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
   const [wbgtData, setWbgtData] = useState<WbgtData>({ wbgt: null, timestamp: null });
-  
+  const [checkinToken, setCheckinToken] = useState<string | null>(null);
+
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -253,6 +277,20 @@ export default function KioskPage() {
   useEffect(() => {
     setKioskState('idle');
   }, []);
+
+  // QRコード用トークンを30秒ごとに更新
+  const refreshCheckinToken = useCallback(async () => {
+    const { data, error } = await supabase.schema('attendance').rpc('create_checkin_token');
+    if (!error && data) {
+      setCheckinToken(data as string);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    refreshCheckinToken();
+    const interval = setInterval(refreshCheckinToken, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshCheckinToken]);
 
   const resetToIdle = useCallback(() => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -424,7 +462,7 @@ export default function KioskPage() {
     <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
       <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center">
-          {kioskState === 'idle' && <IdleScreen wbgtData={wbgtData} />}
+          {kioskState === 'idle' && <IdleScreen wbgtData={wbgtData} checkinToken={checkinToken} />}
           {kioskState === 'success' && <SuccessScreen message={message} subMessage={subMessage} attendanceType={attendanceType} />}
           {kioskState === 'error' && <ErrorScreen message={message} subMessage={subMessage} />}
           {kioskState === 'register' && <RegisterScreen message={message} subMessage={subMessage} />}

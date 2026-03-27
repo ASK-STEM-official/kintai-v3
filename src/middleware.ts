@@ -27,8 +27,9 @@ export async function middleware(request: NextRequest) {
   }
 
   // OAuth セッションチェック（/login と /auth/* 以外）
-  const isPublicPath = request.nextUrl.pathname.startsWith('/login') || 
-                       request.nextUrl.pathname.startsWith('/auth/');
+  const isPublicPath = request.nextUrl.pathname.startsWith('/login') ||
+                       request.nextUrl.pathname.startsWith('/auth/') ||
+                       request.nextUrl.pathname.startsWith('/checkin');
   
   if (!isPublicPath) {
     const oauthUserId = request.cookies.get('oauth_user_id')?.value;
