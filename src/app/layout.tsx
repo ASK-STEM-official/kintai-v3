@@ -38,12 +38,7 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
         >
-            <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white text-center py-2 px-4 text-sm font-medium">
-                システム障害のため、現在ログインおよび勤怠記録が正常に動作しない場合があります。復旧作業中です。ご不便をおかけして申し訳ありません。
-            </div>
-            <div className="pt-9">
-                {children}
-            </div>
+            {children}
             <Toaster />
         </ThemeProvider>
       </body>
