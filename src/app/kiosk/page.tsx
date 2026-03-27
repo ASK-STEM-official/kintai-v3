@@ -112,21 +112,21 @@ const IdleScreen = memo(({ wbgtData, checkinToken }: { wbgtData: WbgtData; check
           <WbgtDisplay wbgt={wbgtData.wbgt} />
         </div>
       </header>
-      <div className="flex-grow w-full flex items-center justify-center overflow-y-auto py-4 gap-16">
+      <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4 gap-6">
         <Clock />
         <div className="flex flex-col items-center gap-3">
           {checkinUrl ? (
             <div className="bg-white p-3 rounded-lg shadow-md">
               <Image
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkinUrl)}`}
-                width={200}
-                height={200}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(checkinUrl)}`}
+                width={160}
+                height={160}
                 alt="出退勤QRコード"
                 priority
               />
             </div>
           ) : (
-            <div className="w-[224px] h-[224px] bg-gray-800 rounded-lg flex items-center justify-center">
+            <div className="w-[184px] h-[184px] bg-gray-800 rounded-lg flex items-center justify-center">
               <p className="text-gray-500 text-sm">QR生成中...</p>
             </div>
           )}
