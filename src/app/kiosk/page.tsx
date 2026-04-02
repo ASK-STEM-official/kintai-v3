@@ -279,6 +279,18 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, [refreshCheckinToken]);
 
+  // 誰かがQRを使ったら即座にトークンを更新
+  useEffect(() => {
+    if (!checkinToken) return;
+    const poll = setInterval(async () => {
+      const { data } = await supabase.schema('attendance').rpc('has_checkin_token_been_used', { p_token: checkinToken });
+      if (data === true) {
+        refreshCheckinToken();
+      }
+    }, 3_000);
+    return () => clearInterval(poll);
+  }, [checkinToken, supabase, refreshCheckinToken]);
+
   const resetToIdle = useCallback(() => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
