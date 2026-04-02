@@ -42,7 +42,7 @@ export default async function CheckinTokenPage({ params }: Props) {
     supabase
       .schema('member')
       .from('members')
-      .select('display_name, discord_username')
+      .select('discord_username')
       .eq('supabase_auth_user_id', oauthUser.id)
       .single(),
     supabase
@@ -60,7 +60,7 @@ export default async function CheckinTokenPage({ params }: Props) {
   }
 
   const member = memberResult.data;
-  const displayName = member.display_name || member.discord_username || oauthUser.displayName || '名無しさん';
+  const displayName = member.discord_username || oauthUser.displayName || '名無しさん';
   const currentStatus: 'in' | 'out' = lastAttendanceResult.data?.type === 'in' ? 'in' : 'out';
 
   return (

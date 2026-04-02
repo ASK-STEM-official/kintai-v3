@@ -102,7 +102,7 @@ BEGIN
   WHERE id = v_token_id;
 
   -- メンバー確認
-  SELECT m.display_name INTO v_display_name
+  SELECT m.discord_username INTO v_display_name
   FROM member.members m
   WHERE m.supabase_auth_user_id = p_user_id;
 
