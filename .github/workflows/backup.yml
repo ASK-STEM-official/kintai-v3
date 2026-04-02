@@ -1,0 +1,56 @@
+name: Daily DB Backup
+
+on:
+  schedule:
+    - cron: '0 17 * * *'  # 毎日 02:00 JST (17:00 UTC)
+  workflow_dispatch:        # 手動実行も可能
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install PostgreSQL client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump "$DATABASE_URL" \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            -f backup.dump
+
+      - name: Encrypt with GPG (AES256)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes \
+            --passphrase-fd 0 \
+            --symmetric \
+            --cipher-algo AES256 \
+            -o backup.dump.gpg \
+            backup.dump
+          rm backup.dump
+
+      - name: Push to backup repository
+        env:
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+        run: |
+          FILENAME="$(date -u +%Y-%m-%dT%H-%M-%SZ).dump.gpg"
+          git clone "https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/${BACKUP_REPO}.git" backup-repo
+          cp backup.dump.gpg "backup-repo/$FILENAME"
+          cd backup-repo
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add "$FILENAME"
+          git commit -m "backup: $FILENAME"
+          git push
+
+      - name: Cleanup
+        if: always()
+        run: rm -f backup.dump backup.dump.gpg
