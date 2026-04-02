@@ -81,25 +81,20 @@ DECLARE
   v_now          timestamptz := now();
   v_date         date        := (v_now AT TIME ZONE 'Asia/Tokyo')::date;
 BEGIN
-  -- トークンを検証（存在する・未使用・期限内）
+  -- トークンを検証（存在する・期限内）
+  -- 同じQRコードは有効期限内であれば何度でも使用可能
   SELECT id INTO v_token_id
   FROM attendance.temp_checkin_tokens
-  WHERE token    = p_token
-    AND is_used  = false
+  WHERE token      = p_token
     AND expires_at > v_now;
 
   IF v_token_id IS NULL THEN
     RETURN json_build_object(
       'success', false,
-      'message', 'QRコードの有効期限が切れているか、既に使用済みです。キオスクの新しいQRコードを読み取ってください。',
+      'message', 'QRコードの有効期限が切れています。キオスクの新しいQRコードを読み取ってください。',
       'user', null, 'type', null
     );
   END IF;
-
-  -- トークンを使用済みにする（他の同時リクエストを弾く）
-  UPDATE attendance.temp_checkin_tokens
-  SET is_used = true
-  WHERE id = v_token_id;
 
   -- メンバー確認
   SELECT m.discord_username INTO v_display_name
