@@ -6,7 +6,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { createTempRegistration } from '@/app/actions';
 import Clock from '@/components/kiosk/Clock';
 import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer } from 'lucide-react';
-import Image from 'next/image';
+import QRCode from 'react-qr-code';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
@@ -117,13 +117,7 @@ const IdleScreen = memo(({ wbgtData, checkinToken }: { wbgtData: WbgtData; check
         <div className="flex flex-col items-center gap-3">
           {checkinUrl ? (
             <div className="bg-white p-3 rounded-lg shadow-md">
-              <Image
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(checkinUrl)}`}
-                width={160}
-                height={160}
-                alt="出退勤QRコード"
-                priority
-              />
+              <QRCode value={checkinUrl} size={160} />
             </div>
           ) : (
             <div className="w-[184px] h-[184px] bg-gray-800 rounded-lg flex items-center justify-center">
@@ -226,14 +220,7 @@ const QrScreen = memo(({ qrToken, qrExpiry, onExpire }: { qrToken: string, qrExp
         <div className="text-center flex flex-col items-center">
             <p className="text-4xl font-bold mb-4">QRコード登録</p>
             <div className="bg-white p-4 rounded-lg">
-                <Image
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(url)}`}
-                    width={256}
-                    height={256}
-                    alt="QR Code"
-                    data-ai-hint="qr code"
-                    priority
-                />
+                <QRCode value={url} size={256} />
             </div>
             <p className="mt-4 text-xl max-w-md">スマートフォンでQRコードを読み取り登録を完了してください。</p>
             <div className="mt-4 flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg max-w-2xl">
