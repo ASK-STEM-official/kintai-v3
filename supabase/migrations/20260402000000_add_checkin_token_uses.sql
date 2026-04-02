@@ -79,12 +79,12 @@ BEGIN
   WHERE token_id = v_token_id AND user_id = p_user_id;
 
   IF FOUND THEN
-    -- 既にこのトークンで打刻済み → 前回結果をそのまま返す（記録しない）
+    -- 既にこのトークンで打刻済み → 使用済みフラグを返す（記録しない）
     RETURN json_build_object(
-      'success', true,
-      'message', CASE WHEN v_existing_type = 'in' THEN '出勤しました' ELSE '退勤しました' END,
-      'user', json_build_object('display_name', v_display_name),
-      'type', v_existing_type
+      'success', false,
+      'already_used', true,
+      'message', 'このQRコードはすでに使用済みです。',
+      'user', null, 'type', null
     );
   END IF;
 

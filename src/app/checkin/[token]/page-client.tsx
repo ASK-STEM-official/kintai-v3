@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { signInWithSTEM } from '@/app/actions-oauth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogIn, LogOut, XCircle, Clock } from 'lucide-react';
+import { LogIn, LogOut, XCircle, Clock, ShieldAlert } from 'lucide-react';
 import { Icons } from '@/components/icons';
 
-type Status = 'success' | 'error' | 'invalid' | 'expired' | 'unauthenticated' | 'not_member';
+type Status = 'success' | 'error' | 'invalid' | 'expired' | 'unauthenticated' | 'not_member' | 'already_used';
 
 interface Props {
   status: Status;
@@ -67,6 +67,21 @@ export default function CheckinTokenClient({ status, token, message, displayName
               {loading ? 'リダイレクト中...' : 'STEMでログイン'}
             </Button>
           </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
+  // 使用済み
+  if (status === 'already_used') {
+    return (
+      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+        <Card className="w-full max-w-md text-center shadow-lg">
+          <CardHeader className="items-center py-10 px-8">
+            <ShieldAlert className="w-24 h-24 text-amber-500 mb-4" />
+            <CardTitle className="text-3xl font-bold">使用済みのQRコード</CardTitle>
+            <CardDescription className="text-lg mt-3">このQRコードはすでに使用済みです。<br />キオスクに表示されている新しいQRコードを読み取ってください。</CardDescription>
+          </CardHeader>
         </Card>
       </main>
     );

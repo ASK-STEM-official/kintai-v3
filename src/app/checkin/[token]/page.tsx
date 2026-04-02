@@ -47,12 +47,16 @@ export default async function CheckinTokenPage({ params }: Props) {
 
   const result = rpcData as {
     success: boolean;
+    already_used?: boolean;
     message: string;
     user: { display_name: string | null } | null;
     type: 'in' | 'out' | null;
   };
 
   if (!result.success) {
+    if (result.already_used) {
+      return <CheckinTokenClient status="already_used" token={token} />;
+    }
     return <CheckinTokenClient status="error" token={token} message={result.message} />;
   }
 
