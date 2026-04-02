@@ -33,18 +33,18 @@ export default function CheckinTokenClient({ status, token, message, displayName
   // 成功
   if (status === 'success') {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardHeader className="items-center">
+      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+        <Card className="w-full max-w-md text-center shadow-lg">
+          <CardHeader className="items-center py-10 px-8">
             {resultType === 'in'
-              ? <LogIn className="w-20 h-20 text-green-500 mb-2" />
-              : <LogOut className="w-20 h-20 text-blue-500 mb-2" />
+              ? <LogIn className="w-28 h-28 text-green-500 mb-4" />
+              : <LogOut className="w-28 h-28 text-blue-500 mb-4" />
             }
-            <CardTitle className="text-3xl">{displayName}</CardTitle>
-            <CardDescription className="text-xl mt-2">{message}</CardDescription>
+            <CardTitle className="text-4xl font-bold mt-2">{displayName}</CardTitle>
+            <CardDescription className="text-2xl mt-4 font-medium text-foreground">{message}</CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">このページを閉じてください。</p>
+          <CardContent className="pb-10">
+            <p className="text-muted-foreground text-base">このページを閉じてください。</p>
           </CardContent>
         </Card>
       </main>
@@ -54,16 +54,16 @@ export default function CheckinTokenClient({ status, token, message, displayName
   // 未認証 → ログインボタン
   if (status === 'unauthenticated') {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardHeader className="items-center">
-            <Icons.Logo className="w-14 h-14 text-primary mb-2" />
-            <CardTitle className="text-2xl">STEM研究部 出退勤</CardTitle>
-            <CardDescription>STEMアカウントでログインして出退勤してください。</CardDescription>
+      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+        <Card className="w-full max-w-md text-center shadow-lg">
+          <CardHeader className="items-center py-10 px-8">
+            <Icons.Logo className="w-20 h-20 text-primary mb-4" />
+            <CardTitle className="text-3xl font-bold">STEM研究部 出退勤</CardTitle>
+            <CardDescription className="text-lg mt-3">STEMアカウントでログインして出退勤してください。</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button onClick={handleLogin} disabled={loading} className="w-full" size="lg">
-              <Icons.Logo className="w-5 h-5 mr-2" />
+          <CardContent className="pb-10 px-8">
+            <Button onClick={handleLogin} disabled={loading} className="w-full h-14 text-lg" size="lg">
+              <Icons.Logo className="w-6 h-6 mr-2" />
               {loading ? 'リダイレクト中...' : 'STEMでログイン'}
             </Button>
           </CardContent>
@@ -75,12 +75,12 @@ export default function CheckinTokenClient({ status, token, message, displayName
   // 期限切れ・無効
   if (status === 'expired' || status === 'invalid') {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardHeader className="items-center">
-            <Clock className="w-14 h-14 text-muted-foreground mb-2" />
-            <CardTitle>QRコードの有効期限切れ</CardTitle>
-            <CardDescription>キオスクに表示されている新しいQRコードを読み取ってください。</CardDescription>
+      <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+        <Card className="w-full max-w-md text-center shadow-lg">
+          <CardHeader className="items-center py-10 px-8">
+            <Clock className="w-24 h-24 text-muted-foreground mb-4" />
+            <CardTitle className="text-3xl font-bold">QRコードの有効期限切れ</CardTitle>
+            <CardDescription className="text-lg mt-3">キオスクに表示されている新しいQRコードを読み取ってください。</CardDescription>
           </CardHeader>
         </Card>
       </main>
@@ -89,12 +89,12 @@ export default function CheckinTokenClient({ status, token, message, displayName
 
   // エラー・未登録
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-sm text-center">
-        <CardHeader className="items-center">
-          <XCircle className="w-14 h-14 text-destructive mb-2" />
-          <CardTitle>エラー</CardTitle>
-          <CardDescription>
+    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6">
+      <Card className="w-full max-w-md text-center shadow-lg">
+        <CardHeader className="items-center py-10 px-8">
+          <XCircle className="w-24 h-24 text-destructive mb-4" />
+          <CardTitle className="text-3xl font-bold">エラー</CardTitle>
+          <CardDescription className="text-lg mt-3">
             {status === 'not_member'
               ? 'メンバー登録が確認できません。部長にお問い合わせください。'
               : (message || 'エラーが発生しました。')}

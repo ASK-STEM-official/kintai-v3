@@ -73,13 +73,14 @@ SECURITY DEFINER
 SET search_path = attendance, member, auth
 AS $$
 DECLARE
-  v_token_id     uuid;
-  v_display_name text;
-  v_last_type    text;
-  v_new_type     text;
-  v_placeholder  text;
-  v_now          timestamptz := now();
-  v_date         date        := (v_now AT TIME ZONE 'Asia/Tokyo')::date;
+  v_token_id      uuid;
+  v_display_name  text;
+  v_last_type     text;
+  v_last_ts       timestamptz;
+  v_new_type      text;
+  v_placeholder   text;
+  v_now           timestamptz := now();
+  v_date          date        := (v_now AT TIME ZONE 'Asia/Tokyo')::date;
 BEGIN
   -- トークンを検証（存在する・期限内）
   -- 同じQRコードは有効期限内であれば何度でも使用可能
@@ -122,11 +123,21 @@ BEGIN
   VALUES (p_user_id, v_placeholder)
   ON CONFLICT (supabase_auth_user_id) DO NOTHING;
 
-  -- 最終打刻タイプ取得 → トグル
-  SELECT a.type INTO v_last_type
+  -- 最終打刻タイプ・時刻取得
+  SELECT a.type, a.timestamp INTO v_last_type, v_last_ts
   FROM attendance.attendances a
   WHERE a.user_id = p_user_id
   ORDER BY a.timestamp DESC LIMIT 1;
+
+  -- 3分以内の重複打刻を防止（リロード誤操作対策）
+  IF v_last_ts IS NOT NULL AND v_last_ts > v_now - interval '3 minutes' THEN
+    RETURN json_build_object(
+      'success', true,
+      'message', CASE WHEN v_last_type = 'in' THEN '出勤しました' ELSE '退勤しました' END,
+      'user', json_build_object('display_name', v_display_name),
+      'type', v_last_type
+    );
+  END IF;
 
   v_new_type := CASE WHEN v_last_type = 'in' THEN 'out' ELSE 'in' END;
 
