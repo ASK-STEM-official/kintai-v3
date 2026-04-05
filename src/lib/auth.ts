@@ -60,15 +60,15 @@ export async function getOAuthUser(): Promise<AuthUser | null> {
   const payload = await verifyOAuthToken(token);
   if (!payload) return null;
 
-  // JWT の sub と cookie の oauth_user_id が一致することを確認
+  // JWT の sub は必須。sub がないトークンや cookie との不一致は拒否
   const tokenSub = payload.sub as string | undefined;
-  if (tokenSub && tokenSub !== userId) {
-    console.warn('OAuth token sub does not match oauth_user_id cookie');
+  if (!tokenSub || tokenSub !== userId) {
+    console.warn('OAuth token sub missing or does not match oauth_user_id cookie');
     return null;
   }
 
   return {
-    id: tokenSub || userId,
+    id: tokenSub,
     displayName: (payload.display_name as string) || '名無しさん',
     discordId: (payload.discord_id as string) || null,
     email: null,
