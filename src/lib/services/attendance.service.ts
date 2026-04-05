@@ -9,10 +9,11 @@ import { format, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 
  * ユーザーの出退勤を強制的に切り替える
  */
 export async function forceToggleAttendance(userId: string) {
-    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     try {
+        await requireAdmin();
+
         const { data: attendanceUser, error: attUserError } = await supabase
             .schema('attendance')
             .from('users')
@@ -207,13 +208,14 @@ export async function getDailyAttendanceDetails(date: Date) {
  * 全体統計を取得
  */
 export async function getOverallStats(days: number = 30) {
-    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     const today = new Date();
     const startDate = format(subDays(today, days - 1), 'yyyy-MM-dd');
     const endDate = format(today, 'yyyy-MM-dd');
 
     try {
+        await requireServerAuth();
+
         // 総メンバー数
         const { count: totalMembers } = await supabase
             .schema('member')

@@ -26,10 +26,15 @@ export default function OverallAttendanceCalendar() {
 
     useEffect(() => {
         startTransition(async () => {
-            const year = currentMonth.getFullYear();
-            const month = currentMonth.getMonth() + 1;
-            const counts = await getDailyAttendanceCounts(year, month);
-            setDailyCounts(counts);
+            try {
+                const year = currentMonth.getFullYear();
+                const month = currentMonth.getMonth() + 1;
+                const counts = await getDailyAttendanceCounts(year, month);
+                setDailyCounts(counts);
+            } catch (error) {
+                console.error('Failed to fetch daily attendance counts:', error);
+                setDailyCounts({});
+            }
         });
     }, [currentMonth]);
 
@@ -39,9 +44,14 @@ export default function OverallAttendanceCalendar() {
             return;
         }
         startTransition(async () => {
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            const details = await getDailyAttendanceDetails(dateStr);
-            setSelectedDetails(details);
+            try {
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                const details = await getDailyAttendanceDetails(dateStr);
+                setSelectedDetails(details);
+            } catch (error) {
+                console.error('Failed to fetch daily attendance details:', error);
+                setSelectedDetails(null);
+            }
         });
     }, [selectedDate]);
     

@@ -33,9 +33,15 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
   useEffect(() => {
     const fetchAttendance = async () => {
       setIsLoading(true);
-      const data = await getMonthlyAttendance(userId, date);
-      setAttendance(data);
-      setIsLoading(false);
+      try {
+        const data = await getMonthlyAttendance(userId, date);
+        setAttendance(data);
+      } catch (error) {
+        console.error('Failed to fetch monthly attendance:', error);
+        setAttendance([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchAttendance();
   }, [userId, date]);
