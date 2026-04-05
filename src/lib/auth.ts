@@ -21,18 +21,15 @@ export type AuthUser = {
 
 /**
  * STEM OAuth JWT の署名検証 + ペイロード取得。
- * HS256 で署名されたトークンを JWT_SECRET で検証し、
- * 有効期限・issuer もチェックする。
+ * JWT_SECRET 必須。未設定の場合は認証を拒否する（セキュリティ優先）。
  */
 async function verifyOAuthToken(token: string): Promise<Record<string, unknown> | null> {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    console.error('JWT_SECRET is not configured — OAuth token verification disabled');
+    console.error('[AUTH] JWT_SECRET is not configured — rejecting all OAuth tokens');
     return null;
   }
 
-  // STEM 側の issuer: NEXT_PUBLIC_APP_URL (= STEM のベース URL)
-  // kintai 側では NEXT_PUBLIC_STEM_OAUTH_BASE_URL から推定
   const oauthBaseUrl = process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || '';
   const expectedIssuer = oauthBaseUrl.replace(/\/oauth\/?$/, '') || undefined;
 
@@ -44,7 +41,7 @@ async function verifyOAuthToken(token: string): Promise<Record<string, unknown> 
     });
     return payload as Record<string, unknown>;
   } catch (error) {
-    console.warn('OAuth token verification failed:', (error as Error).message);
+    console.warn('[AUTH] OAuth token verification failed:', (error as Error).message);
     return null;
   }
 }

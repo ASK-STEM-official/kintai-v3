@@ -18,6 +18,12 @@ This is a Next.js attendance management system for STEM research clubs, built wi
 
 Create a file named `.env.local` in the root of the project. Copy the contents of `.env.local.example` and fill in the values with your project's details.
 
+The following environment variable is **required** for OAuth authentication:
+
+| Variable | Description |
+|---|---|
+| `JWT_SECRET` | STEM-system と共有する JWT 署名鍵。STEM-system 側の `JWT_SECRET` と同じ値を設定すること。 |
+
 ### 3. Install Dependencies and Run the App
 
 First, run the development server:
