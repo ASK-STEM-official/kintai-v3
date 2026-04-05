@@ -6,6 +6,7 @@
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { jwtVerify } from 'jose';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type AuthUser = {
@@ -19,22 +20,38 @@ export type AuthUser = {
 };
 
 /**
- * OAuth JWT のペイロードをデコード（署名検証なし）
- * httpOnly + secure cookie に保存されているため改ざんリスクは低い
+ * STEM OAuth JWT の署名検証 + ペイロード取得。
+ * HS256 で署名されたトークンを JWT_SECRET で検証し、
+ * 有効期限・issuer もチェックする。
  */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
+async function verifyOAuthToken(token: string): Promise<Record<string, unknown> | null> {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET is not configured — OAuth token verification disabled');
+    return null;
+  }
+
+  // STEM 側の issuer: NEXT_PUBLIC_APP_URL (= STEM のベース URL)
+  // kintai 側では NEXT_PUBLIC_STEM_OAUTH_BASE_URL から推定
+  const oauthBaseUrl = process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || '';
+  const expectedIssuer = oauthBaseUrl.replace(/\/oauth\/?$/, '') || undefined;
+
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = Buffer.from(parts[1], 'base64url').toString('utf-8');
-    return JSON.parse(payload);
-  } catch {
+    const encodedSecret = new TextEncoder().encode(secret);
+    const { payload } = await jwtVerify(token, encodedSecret, {
+      algorithms: ['HS256'],
+      ...(expectedIssuer ? { issuer: expectedIssuer } : {}),
+    });
+    return payload as Record<string, unknown>;
+  } catch (error) {
+    console.warn('OAuth token verification failed:', (error as Error).message);
     return null;
   }
 }
 
 /**
- * OAuth cookie からユーザー情報を取得
+ * OAuth cookie からユーザー情報を取得。
+ * JWT 署名・有効期限を検証し、不正なトークンは拒否する。
  */
 export async function getOAuthUser(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
@@ -43,11 +60,18 @@ export async function getOAuthUser(): Promise<AuthUser | null> {
 
   if (!token || !userId) return null;
 
-  const payload = decodeJwtPayload(token);
+  const payload = await verifyOAuthToken(token);
   if (!payload) return null;
 
+  // JWT の sub と cookie の oauth_user_id が一致することを確認
+  const tokenSub = payload.sub as string | undefined;
+  if (tokenSub && tokenSub !== userId) {
+    console.warn('OAuth token sub does not match oauth_user_id cookie');
+    return null;
+  }
+
   return {
-    id: (payload.sub as string) || userId,
+    id: tokenSub || userId,
     displayName: (payload.display_name as string) || '名無しさん',
     discordId: (payload.discord_id as string) || null,
     email: null,
