@@ -1,6 +1,7 @@
 'use server';
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 
 type UserWithDetails = {
     id: string;
@@ -21,6 +22,7 @@ type UserWithDetails = {
  * すべてのユーザー情報を取得（管理画面用）
  */
 export async function getAllUsersWithStatus(): Promise<{ data: UserWithDetails[], error: any }> {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     try {
@@ -102,6 +104,7 @@ export async function getAllUsersWithStatus(): Promise<{ data: UserWithDetails[]
  * ユーザーのDiscordユーザー名を更新（本名はDBに保存しない）
  */
 export async function updateUserDisplayName(userId: string, discordUsername: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     const { error } = await supabase
@@ -117,6 +120,7 @@ export async function updateUserDisplayName(userId: string, discordUsername: str
  * 全ユーザーのDiscordユーザー名を一括更新（本名はDBに保存しない）
  */
 export async function updateAllUserDisplayNames() {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     try {
@@ -174,6 +178,7 @@ export async function updateAllUserDisplayNames() {
  * ユーザーのカードIDを更新
  */
 export async function updateUserCardId(userId: string, newCardId: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     try {

@@ -79,3 +79,49 @@ export async function requireAuth(): Promise<{ userId: string; supabase: Supabas
 
   return { userId: user.id, supabase };
 }
+
+/**
+ * Server Action 用の認証ガード。
+ * 未認証の場合は例外を投げる（リダイレクトしない）。
+ */
+export async function requireServerAuth(): Promise<AuthUser> {
+  const user = await getOAuthUser();
+  if (user) return user;
+
+  // Supabase セッションにフォールバック
+  const supabase = await createSupabaseServerClient();
+  const { data: { user: sbUser } } = await supabase.auth.getUser();
+  if (!sbUser) {
+    throw new Error('認証が必要です。');
+  }
+
+  return {
+    id: sbUser.id,
+    displayName: sbUser.user_metadata?.full_name || '名無しさん',
+    discordId: sbUser.user_metadata?.provider_id || null,
+    email: sbUser.email || null,
+    avatarUrl: sbUser.user_metadata?.avatar_url || null,
+    isOAuth: false,
+  };
+}
+
+/**
+ * Server Action 用の管理者認証ガード。
+ * 未認証または管理者でない場合は例外を投げる。
+ */
+export async function requireAdmin(): Promise<AuthUser> {
+  const user = await requireServerAuth();
+  const supabase = await createSupabaseAdminClient();
+  const { data: profile } = await supabase
+    .schema('member')
+    .from('members')
+    .select('is_admin')
+    .eq('supabase_auth_user_id', user.id)
+    .single();
+
+  if (!profile?.is_admin) {
+    throw new Error('管理者権限が必要です。');
+  }
+
+  return user;
+}

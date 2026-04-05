@@ -1,12 +1,14 @@
 'use server';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 /**
  * 全ユーザーを強制退勤させる
  */
 export async function forceLogoutAll() {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     
     const { data: currentlyIn, error: currentlyInError } = await (supabase as any)

@@ -1,11 +1,13 @@
 'use server';
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 
 /**
  * 仮登録情報を全件取得
  */
 export async function getTempRegistrations() {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('attendance')
@@ -108,6 +110,7 @@ export async function completeTempRegistration(token: string, cardId: string) {
  * 仮登録を削除
  */
 export async function deleteTempRegistration(token: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     
     return supabase

@@ -1,6 +1,7 @@
 'use server';
 
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireServerAuth, requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { format, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 'date-fns';
 
@@ -8,6 +9,7 @@ import { format, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 
  * ユーザーの出退勤を強制的に切り替える
  */
 export async function forceToggleAttendance(userId: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
     try {
@@ -68,6 +70,7 @@ export async function forceToggleAttendance(userId: string) {
  * 日次出勤ログを全件取得
  */
 export async function getAllDailyLogoutLogs() {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('attendance')
@@ -80,6 +83,7 @@ export async function getAllDailyLogoutLogs() {
  * 月次出席サマリーを取得
  */
 export async function getMonthlyAttendanceSummary(month: Date) {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -129,6 +133,7 @@ export async function getMonthlyAttendanceSummary(month: Date) {
  * 日別出勤数を取得
  */
 export async function getDailyAttendanceCounts(month: Date) {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
@@ -159,6 +164,7 @@ export async function getDailyAttendanceCounts(month: Date) {
  * 特定日の出勤詳細を取得
  */
 export async function getDailyAttendanceDetails(date: Date) {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     const targetDate = format(date, 'yyyy-MM-dd');
     
@@ -201,6 +207,7 @@ export async function getDailyAttendanceDetails(date: Date) {
  * 全体統計を取得
  */
 export async function getOverallStats(days: number = 30) {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     const today = new Date();
     const startDate = format(subDays(today, days - 1), 'yyyy-MM-dd');

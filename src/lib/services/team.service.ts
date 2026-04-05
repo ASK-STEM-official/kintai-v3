@@ -1,11 +1,13 @@
 'use server';
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireServerAuth, requireAdmin } from "@/lib/auth";
 
 /**
  * 全チームを取得
  */
 export async function getAllTeams() {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('member')
@@ -18,6 +20,7 @@ export async function getAllTeams() {
  * チームメンバーステータス付きでチーム情報を取得
  */
 export async function getTeamsWithMemberStatus() {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     
     const { data: teams, error: teamsError } = await supabase
@@ -79,6 +82,7 @@ export async function getTeamsWithMemberStatus() {
  * 特定のチームの詳細情報を取得
  */
 export async function getTeamWithMembersStatus(teamId: number) {
+    await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
     
     try {
@@ -128,6 +132,7 @@ export async function getTeamWithMembersStatus(teamId: number) {
  * 新しいチームを作成
  */
 export async function createTeam(name: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('member')
@@ -141,6 +146,7 @@ export async function createTeam(name: string) {
  * チーム情報を更新
  */
 export async function updateTeam(id: string, name: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     return supabase
         .schema('member')
@@ -155,6 +161,7 @@ export async function updateTeam(id: string, name: string) {
  * チームを削除
  */
 export async function deleteTeam(id: string) {
+    await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     
     // 先に関連するmember_team_relationsを削除
