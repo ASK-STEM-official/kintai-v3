@@ -112,10 +112,12 @@ export default function RegisterPageClient({
                                     <span className='font-semibold'>お名前</span>
                                     <span className='font-medium'>{userName}</span>
                                 </div>
+                                {discordUsername && (
                                 <div className="flex justify-between items-center">
                                     <span className='font-semibold'><FaDiscord className="inline w-4 h-4 mr-1" />Discord ユーザー名</span>
                                     <span className='font-medium'>@{discordUsername}</span>
                                 </div>
+                                )}
                                 <div className="flex justify-between items-center">
                                     <span className='font-semibold'>カードID</span>
                                     <span className='font-mono text-sm'>{cardId}</span>

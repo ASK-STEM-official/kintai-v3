@@ -28,16 +28,30 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
         
         const adminSupabase = await createSupabaseAdminClient();
 
-        if (oauthUser.discordId) {
-            discordUsername = oauthUser.discordId;
+        // member DB からプロフィール情報を補完
+        const { data: memberProfile } = await adminSupabase
+            .schema('member')
+            .from('members')
+            .select('discord_uid, display_name')
+            .eq('supabase_auth_user_id', oauthUser.id)
+            .single();
+
+        const discordId = oauthUser.discordId || memberProfile?.discord_uid || null;
+
+        if (discordId) {
+            discordUsername = discordId;
             try {
-                const { data: nickname } = await fetchMemberNickname(oauthUser.discordId);
+                const { data: nickname } = await fetchMemberNickname(discordId);
                 if (nickname) {
                     displayName = nickname;
                 }
             } catch (e) {
                 console.error('Failed to fetch nickname:', e);
             }
+        }
+
+        if (displayName === '名無しさん' && memberProfile?.display_name) {
+            displayName = memberProfile.display_name;
         }
         
         const { data: attendanceUser } = await adminSupabase
