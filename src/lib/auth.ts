@@ -30,14 +30,20 @@ async function verifyOAuthToken(token: string): Promise<Record<string, unknown> 
     return null;
   }
 
-  const oauthBaseUrl = process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || '';
-  const expectedIssuer = oauthBaseUrl.replace(/\/oauth\/?$/, '') || undefined;
+  const oauthBaseUrl = (process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL || '').replace(/\/$/, '');
+  // issuer は OAuth base URL そのまま、または /oauth を除いた base の両方を許容
+  const issuerVariants: string[] = [];
+  if (oauthBaseUrl) {
+    issuerVariants.push(oauthBaseUrl);
+    const stripped = oauthBaseUrl.replace(/\/oauth$/, '');
+    if (stripped !== oauthBaseUrl) issuerVariants.push(stripped);
+  }
 
   try {
     const encodedSecret = new TextEncoder().encode(secret);
     const { payload } = await jwtVerify(token, encodedSecret, {
       algorithms: ['HS256'],
-      ...(expectedIssuer ? { issuer: expectedIssuer } : {}),
+      ...(issuerVariants.length > 0 ? { issuer: issuerVariants } : {}),
     });
     return payload as Record<string, unknown>;
   } catch (error) {
