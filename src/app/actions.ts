@@ -221,11 +221,11 @@ export async function completeRegistration(formData: FormData) {
     return redirect(`/register/${token}?error=Missing token`);
   }
 
-  const supabase = await createSupabaseServerClient();
   const adminSupabase = await createSupabaseAdminClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !user.user_metadata.provider_id) {
+  // STEM OAuth で認証チェック
+  const oauthUser = await getOAuthUser();
+  if (!oauthUser) {
     return redirect(`/register/${token}?error=Not authenticated`);
   }
   
@@ -233,7 +233,7 @@ export async function completeRegistration(formData: FormData) {
     .schema('member')
     .from('members')
     .select('supabase_auth_user_id')
-    .eq('supabase_auth_user_id', user.id)
+    .eq('supabase_auth_user_id', oauthUser.id)
     .single();
 
   if (memberError && memberError.code !== 'PGRST116') {
@@ -241,9 +241,7 @@ export async function completeRegistration(formData: FormData) {
       return redirect(`/register/${token}?error=ユーザープロファイルの取得中にエラーが発生しました。`);
   }
   if (!member) {
-    console.warn(`Attempted registration for non-existent member profile: ${user.id}`);
-    // ここでユーザープロファイルを作成する、またはエラーを返す
-    // 今回はエラーを返す
+    console.warn(`Attempted registration for non-existent member profile: ${oauthUser.id}`);
      return redirect(`/register/${token}?error=ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。`);
   }
 
@@ -271,7 +269,7 @@ export async function completeRegistration(formData: FormData) {
     .from('users')
     .upsert(
       { 
-        supabase_auth_user_id: user.id,
+        supabase_auth_user_id: oauthUser.id,
         card_id: newCardId
       }, 
       { onConflict: 'supabase_auth_user_id' }

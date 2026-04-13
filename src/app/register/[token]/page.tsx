@@ -1,6 +1,7 @@
 
 import { getTempRegistration } from '@/app/actions';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getOAuthUser } from '@/lib/auth';
+import { createSupabaseAdminClient } from '@/lib/supabase/server';
 import RegisterPageClient from './page-client';
 import { Suspense } from 'react';
 import { fetchMemberNickname } from '@/lib/name-api';
@@ -14,25 +15,23 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
         return <RegisterPageClient token={resolvedParams.token} />;
     }
 
-    const supabase = await createSupabaseServerClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const oauthUser = await getOAuthUser();
     
     const tempReg = await getTempRegistration(resolvedParams.token);
     
     let displayName: string | null = null;
+    let discordUsername: string | null = null;
     let existingCardId: string | null = null;
     
-    if (session?.user?.id) {
-        const { data: memberProfile } = await supabase
-            .schema('member')
-            .from('members')
-            .select('discord_uid')
-            .eq('supabase_auth_user_id', session.user.id)
-            .single();
+    if (oauthUser) {
+        displayName = oauthUser.displayName;
         
-        if (memberProfile?.discord_uid) {
+        const adminSupabase = await createSupabaseAdminClient();
+
+        if (oauthUser.discordId) {
+            discordUsername = oauthUser.discordId;
             try {
-                const { data: nickname } = await fetchMemberNickname(memberProfile.discord_uid);
+                const { data: nickname } = await fetchMemberNickname(oauthUser.discordId);
                 if (nickname) {
                     displayName = nickname;
                 }
@@ -41,11 +40,11 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
             }
         }
         
-        const { data: attendanceUser } = await supabase
+        const { data: attendanceUser } = await adminSupabase
             .schema('attendance')
             .from('users')
             .select('card_id')
-            .eq('supabase_auth_user_id', session.user.id)
+            .eq('supabase_auth_user_id', oauthUser.id)
             .single();
 
         if (attendanceUser) {
@@ -57,8 +56,9 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
         <RegisterPageClient 
             token={resolvedParams.token}
             tempReg={tempReg}
-            session={session}
+            isAuthenticated={!!oauthUser}
             displayName={displayName}
+            discordUsername={discordUsername}
             existingCardId={existingCardId}
         />
     );

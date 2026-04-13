@@ -1,7 +1,9 @@
 
 'use client'
 
-import { completeRegistration, signInWithDiscord } from '@/app/actions';
+import { useState } from 'react';
+import { completeRegistration } from '@/app/actions';
+import { signInWithSTEM } from '@/app/actions-oauth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icons } from '@/components/icons';
@@ -42,20 +44,23 @@ type FullProfile = Tables<'member', 'members'> & {
 export default function RegisterPageClient({ 
     token, 
     tempReg, 
-    session, 
+    isAuthenticated,
     displayName,
+    discordUsername,
     existingCardId,
 }: { 
     token: string,
     tempReg?: Tables<'attendance', 'temp_registrations'> | null,
-    session?: any,
+    isAuthenticated?: boolean,
     displayName?: string | null,
+    discordUsername?: string | null,
     existingCardId?: string | null,
 }) {
     const searchParams = useSearchParams();
     const success = searchParams.get('success');
     const error = searchParams.get('error');
     const newCardId = searchParams.get('newCardId');
+    const [loading, setLoading] = useState(false);
 
     const isUpdateFlow = !!existingCardId && existingCardId !== tempReg?.card_id;
 
@@ -90,7 +95,6 @@ export default function RegisterPageClient({
   
     if (success === 'true') {
         const cardId = newCardId || tempReg?.card_id || '';
-        const discordUsername = session?.user?.user_metadata?.user_name || session?.user?.user_metadata?.full_name || '';
         const userName = displayName || '名無しさん';
         
         return (
@@ -149,7 +153,7 @@ export default function RegisterPageClient({
             <Card className="w-full max-w-md">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-2xl"><Icons.UserPlus /> {isUpdateFlow ? "カードの更新" : "カード登録"}</CardTitle>
-                    <CardDescription>QRコードスキャンありがとうございます。Discordで認証して登録を完了してください。</CardDescription>
+                    <CardDescription>QRコードスキャンありがとうございます。STEMで認証して登録を完了してください。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {error && (
@@ -161,16 +165,16 @@ export default function RegisterPageClient({
                     )}
                     <Card className="bg-muted/50">
                         <CardContent className="p-4 space-y-2 text-sm">
-                            {session?.user?.user_metadata && displayName && (
+                            {displayName && (
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">お名前:</span>
                                     <span className="font-medium">{displayName}</span>
                                 </div>
                             )}
-                            {session?.user?.user_metadata && (
+                            {discordUsername && (
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground flex items-center gap-1"><FaDiscord className="w-4 h-4"/>Discord ユーザー名:</span>
-                                    <span className="font-medium">{session.user.user_metadata.user_name || session.user.user_metadata.full_name}</span>
+                                    <span className="font-medium">{discordUsername}</span>
                                 </div>
                             )}
                              <div className="flex justify-between">
@@ -186,14 +190,24 @@ export default function RegisterPageClient({
                         </CardContent>
                     </Card>
                     
-                    {!session ? (
-                        <form action={signInWithDiscord}>
-                            <input type="hidden" name="next" value={`/register/${token}`} />
-                            <Button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white" size="lg">
-                                <FaDiscord className="w-5 h-5 mr-2" />
-                                Discordで認証して{isUpdateFlow ? "更新" : "登録"}する
-                            </Button>
-                        </form>
+                    {!isAuthenticated ? (
+                        <Button 
+                            onClick={async () => {
+                                setLoading(true);
+                                try {
+                                    const { url } = await signInWithSTEM(`/register/${token}`);
+                                    window.location.href = url;
+                                } catch {
+                                    setLoading(false);
+                                }
+                            }}
+                            disabled={loading}
+                            className="w-full bg-primary hover:bg-primary/90 text-white" 
+                            size="lg"
+                        >
+                            <Icons.Logo className="w-5 h-5 mr-2" />
+                            {loading ? 'リダイレクト中...' : `STEMで認証して${isUpdateFlow ? "更新" : "登録"}する`}
+                        </Button>
                     ) : (
                         <RegisterForm token={token} isUpdate={isUpdateFlow} />
                     )}
