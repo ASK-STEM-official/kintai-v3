@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/server';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +9,20 @@ const timeZone = 'Asia/Tokyo';
 
 export async function GET() {
   const now = new Date();
+  const zonedNow = toZonedTime(now, timeZone);
+  const currentHour = zonedNow.getHours();
+  const currentMinute = zonedNow.getMinutes();
+
+  const isTimeWindowActive =
+    (currentHour === 22 && currentMinute >= 50) ||
+    (currentHour === 23 && currentMinute <= 50);
+
+  if (!isTimeWindowActive) {
+    return NextResponse.json(
+      { success: false, message: '現在、この機能は利用できません。JST 22:50から23:50の間のみ有効です。' },
+      { status: 403 }
+    );
+  }
 
   try {
     const supabase = await createSupabaseAdminClient();
