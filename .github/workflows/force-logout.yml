@@ -1,0 +1,22 @@
+name: Force Logout All
+
+on:
+  schedule:
+    - cron: '50 13 * * *'  # 毎日 22:50 JST (13:50 UTC)
+  workflow_dispatch:
+
+jobs:
+  force-logout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Call force-logout-all endpoint
+        env:
+          KINTAI_SITE_URL: ${{ secrets.KINTAI_SITE_URL }}
+        run: |
+          for i in 1 2 3; do
+            echo "attempt $i"
+            curl -sf "$KINTAI_SITE_URL/api/admin/force-logout-all" && echo "" || echo "attempt $i failed"
+            [ $i -lt 3 ] && sleep 300
+          done
