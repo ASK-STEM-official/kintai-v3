@@ -15,6 +15,7 @@ jobs:
         env:
           KINTAI_SITE_URL: ${{ secrets.KINTAI_SITE_URL }}
         run: |
+          set +e
           for i in 1 2 3; do
             echo "attempt $i"
             curl -s "$KINTAI_SITE_URL/api/admin/force-logout-all" || true
