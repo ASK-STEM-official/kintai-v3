@@ -17,6 +17,6 @@ jobs:
         run: |
           for i in 1 2 3; do
             echo "attempt $i"
-            curl -s "$KINTAI_SITE_URL/api/admin/force-logout-all"
+            curl -s "$KINTAI_SITE_URL/api/admin/force-logout-all" || true
             if [ $i -lt 3 ]; then sleep 300; fi
           done
