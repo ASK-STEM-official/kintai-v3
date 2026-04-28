@@ -1,8 +1,8 @@
 
 'use client'
 
-import { useState } from 'react';
-import { completeRegistration } from '@/app/actions';
+import { useState, useEffect } from 'react';
+import { completeRegistration, getNickname } from '@/app/actions';
 import { signInWithSTEM } from '@/app/actions-oauth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,26 +41,36 @@ type FullProfile = Tables<'member', 'members'> & {
     teams: { name: string } | null,
 };
 
-export default function RegisterPageClient({ 
-    token, 
-    tempReg, 
+export default function RegisterPageClient({
+    token,
+    tempReg,
     isAuthenticated,
-    displayName,
+    displayName: initialDisplayName,
     discordUsername,
     existingCardId,
-}: { 
+    discordId,
+}: {
     token: string,
     tempReg?: Tables<'attendance', 'temp_registrations'> | null,
     isAuthenticated?: boolean,
     displayName?: string | null,
     discordUsername?: string | null,
     existingCardId?: string | null,
+    discordId?: string | null,
 }) {
     const searchParams = useSearchParams();
     const success = searchParams.get('success');
     const error = searchParams.get('error');
     const newCardId = searchParams.get('newCardId');
     const [loading, setLoading] = useState(false);
+    const [displayName, setDisplayName] = useState(initialDisplayName);
+
+    useEffect(() => {
+        if (!discordId) return;
+        getNickname(discordId).then(name => {
+            if (name) setDisplayName(name);
+        });
+    }, [discordId]);
 
     const isUpdateFlow = !!existingCardId && existingCardId !== tempReg?.card_id;
 

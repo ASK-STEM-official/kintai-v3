@@ -11,7 +11,7 @@ import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { differenceInSeconds, startOfDay, endOfDay, subDays, format as formatDate, startOfMonth, endOfMonth } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
-import { fetchAllMemberNames } from '@/lib/name-api';
+import { fetchAllMemberNames, fetchMemberNickname } from '@/lib/name-api';
 import { fetchMemberStatus } from '@/lib/member-status-api';
 
 type Member = Tables<'member', 'members'>;
@@ -194,6 +194,12 @@ async function createTempRegistrationInternal(cardId: string, traceId: string): 
 
   console.log(`[CREATE_TEMP_REG:${traceId}] Success (${Date.now() - startTime}ms)`);
   return { success: true, token, message: "QRコードを生成しました。" };
+}
+
+export async function getNickname(discordId: string): Promise<string | null> {
+  await requireServerAuth();
+  const { data } = await fetchMemberNickname(discordId);
+  return data;
 }
 
 export async function getTempRegistration(token: string) {
