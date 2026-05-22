@@ -128,6 +128,15 @@ export async function requireServerAuth(): Promise<AuthUser> {
  */
 export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireServerAuth();
+
+  if (user.isOAuth) {
+    const { getMe } = await import('@/lib/stem-api');
+    const me = await getMe();
+    if (!me?.is_admin) throw new Error('管理者権限が必要です。');
+    return user;
+  }
+
+  // Supabase セッション fallback
   const supabase = await createSupabaseAdminClient();
   const { data: profile } = await supabase
     .schema('member')
@@ -136,9 +145,6 @@ export async function requireAdmin(): Promise<AuthUser> {
     .eq('supabase_auth_user_id', user.id)
     .single();
 
-  if (!profile?.is_admin) {
-    throw new Error('管理者権限が必要です。');
-  }
-
+  if (!profile?.is_admin) throw new Error('管理者権限が必要です。');
   return user;
 }

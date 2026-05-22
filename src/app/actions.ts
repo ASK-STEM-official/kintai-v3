@@ -203,7 +203,7 @@ export async function getNickname(discordId: string): Promise<string | null> {
 }
 
 export async function getTempRegistration(token: string) {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseAdminClient();
     const { data, error } = await supabase
         .schema('attendance')
         .from('temp_registrations')
@@ -213,8 +213,7 @@ export async function getTempRegistration(token: string) {
     if (error || !data) return null;
 
     if (!data.accessed_at) {
-        const admin = await createSupabaseAdminClient();
-        await admin.schema('attendance').from('temp_registrations').update({ accessed_at: new Date().toISOString() }).eq('id', data.id);
+        await supabase.schema('attendance').from('temp_registrations').update({ accessed_at: new Date().toISOString() }).eq('id', data.id);
     }
 
     return data;
@@ -235,20 +234,12 @@ export async function completeRegistration(formData: FormData) {
     return redirect(`/register/${token}?error=Not authenticated`);
   }
   
-  const { data: member, error: memberError } = await adminSupabase
-    .schema('member')
-    .from('members')
-    .select('supabase_auth_user_id')
-    .eq('supabase_auth_user_id', oauthUser.id)
-    .single();
+  const { getMe } = await import('@/lib/stem-api');
+  const member = await getMe();
 
-  if (memberError && memberError.code !== 'PGRST116') {
-      console.error("Error fetching member profile:", memberError);
-      return redirect(`/register/${token}?error=ユーザープロファイルの取得中にエラーが発生しました。`);
-  }
   if (!member) {
     console.warn(`Attempted registration for non-existent member profile: ${oauthUser.id}`);
-     return redirect(`/register/${token}?error=ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。`);
+    return redirect(`/register/${token}?error=ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。`);
   }
 
   const { data: tempReg, error: tempRegError } = await adminSupabase
@@ -478,58 +469,17 @@ export async function calculateTotalActivityTime(userId: string, days: number): 
 export async function getAllUsersWithStatus() {
     await requireAdmin();
     const supabase = await createSupabaseAdminClient();
+    const { getMembers } = await import('@/lib/stem-api');
 
-    // メンバー、勤怠ユーザーを並列取得（Bot API は呼ばない — DB から読む）
-    const [membersResult, attendanceUsersResult] = await Promise.all([
-      supabase
-        .schema('member')
-        .from('members')
-        .select(`
-            supabase_auth_user_id,
-            discord_uid,
-            discord_username,
-            generation,
-            is_admin,
-            student_number,
-            status,
-            deleted_at,
-            member_team_relations(team_id, teams(name))
-        `),
-      supabase
-        .schema('attendance')
-        .from('users')
-        .select('supabase_auth_user_id, card_id'),
+    const [members, attendanceUsersResult] = await Promise.all([
+      getMembers(),
+      supabase.schema('attendance').from('users').select('supabase_auth_user_id, card_id'),
     ]);
 
-    const { data: members, error: membersError } = membersResult;
-
-    if (membersError) {
-        console.error('Error fetching members:', membersError);
-        return { data: [], error: membersError };
-    }
+    if (!members.length) return { data: [], error: null };
 
     const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
-
-    // discord_username が NULL のユーザーを auth.users の full_name からバックフィル（バックグラウンド）
-    const uncachedUsernames = members?.filter(m => !m.discord_username) || [];
-    if (uncachedUsernames.length > 0) {
-        supabase.auth.admin.listUsers({ perPage: 1000 }).then(({ data }) => {
-            if (!data?.users) return;
-            const usernameMap = new Map(
-                data.users.filter(u => u.user_metadata?.full_name).map(u => [u.id, u.user_metadata.full_name as string])
-            );
-            Promise.all(uncachedUsernames
-                .filter(m => usernameMap.has(m.supabase_auth_user_id))
-                .map(m =>
-                    supabase.schema('member').from('members')
-                        .update({ discord_username: usernameMap.get(m.supabase_auth_user_id) })
-                        .eq('supabase_auth_user_id', m.supabase_auth_user_id)
-                )
-            ).then(() => console.log(`Backfilled discord_username for ${uncachedUsernames.length} users`));
-        });
-    }
-
-    const memberIds = members?.map(m => m.supabase_auth_user_id) || [];
+    const memberIds = members.map(m => m.id);
 
     const { data: latestAttendances } = await supabase
       .schema('attendance')
@@ -538,35 +488,32 @@ export async function getAllUsersWithStatus() {
       .in('user_id', memberIds)
       .order('timestamp', { ascending: false });
 
-    // 各ユーザーごとに最新の記録を取得
     const latestAttendanceMap = new Map<string, { type: string; timestamp: string }>();
-    if (latestAttendances) {
-      latestAttendances.forEach(att => {
-        if (!latestAttendanceMap.has(att.user_id)) {
-          latestAttendanceMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
-        }
-      });
-    }
+    latestAttendances?.forEach(att => {
+      if (!latestAttendanceMap.has(att.user_id)) {
+        latestAttendanceMap.set(att.user_id, { type: att.type, timestamp: att.timestamp });
+      }
+    });
 
-    const users = members?.map((member: any) => {
-        const latestAttendance = latestAttendanceMap.get(member.supabase_auth_user_id);
-        const teamRelation = member.member_team_relations?.[0];
-        return {
-            id: member.supabase_auth_user_id,
-            display_name: member.discord_username || '不明',
-            discord_username: member.discord_username || null,
-            card_id: cardMap.get(member.supabase_auth_user_id) || null,
-            team_name: teamRelation?.teams?.name || null,
-            team_id: teamRelation?.team_id || null,
-            generation: member.generation,
-            is_admin: member.is_admin,
-            latest_attendance_type: latestAttendance?.type || null,
-            latest_timestamp: latestAttendance?.timestamp || null,
-            deleted_at: member.deleted_at,
-            student_number: member.student_number,
-            status: member.status ?? 0,
-        };
-    }) || [];
+    const users = members.map((member) => {
+      const latestAttendance = latestAttendanceMap.get(member.id);
+      const team = member.teams?.[0];
+      return {
+        id: member.id,
+        display_name: member.discord_username || member.display_name || '不明',
+        discord_username: member.discord_username || null,
+        card_id: cardMap.get(member.id) || null,
+        team_name: team?.name || null,
+        team_id: team?.id || null,
+        generation: member.generation,
+        is_admin: member.is_admin,
+        latest_attendance_type: latestAttendance?.type || null,
+        latest_timestamp: latestAttendance?.timestamp || null,
+        deleted_at: member.deleted_at,
+        student_number: member.student_number ?? null,
+        status: member.status ?? 0,
+      };
+    });
 
     return { data: users, error: null };
 }
@@ -582,21 +529,13 @@ export async function getAllUsersWithStatus() {
  */
 export async function fetchAllUserRealNames(): Promise<{ data: Record<string, string> | null; error: string | null }> {
     await requireAdmin();
-    const supabase = await createSupabaseAdminClient();
+    const { getMembers } = await import('@/lib/stem-api');
 
-    // discord_uid → supabase_auth_user_id のマッピングを取得
-    const { data: members, error } = await supabase
-        .schema('member')
-        .from('members')
-        .select('supabase_auth_user_id, discord_uid')
-        .is('deleted_at', null);
+    const [members, nameApiResult] = await Promise.all([
+      getMembers(),
+      fetchAllMemberNames(),
+    ]);
 
-    if (error) {
-        return { data: null, error: error.message };
-    }
-
-    // Bot API から本名を取得（DBには保存しない）
-    const nameApiResult = await fetchAllMemberNames();
     if (!nameApiResult.data) {
         return { data: null, error: 'Bot API からの取得に失敗しました' };
     }
@@ -604,12 +543,10 @@ export async function fetchAllUserRealNames(): Promise<{ data: Record<string, st
     const nameMap = new Map(nameApiResult.data.map(item => [item.uid, item.name]));
     const result: Record<string, string> = {};
 
-    for (const m of members || []) {
+    for (const m of members.filter(m => !m.deleted_at)) {
         if (m.discord_uid) {
             const name = nameMap.get(m.discord_uid);
-            if (name) {
-                result[m.supabase_auth_user_id] = name;
-            }
+            if (name) result[m.id] = name;
         }
     }
 
@@ -618,63 +555,40 @@ export async function fetchAllUserRealNames(): Promise<{ data: Record<string, st
 
 export async function getAllTeams() {
     await requireServerAuth();
-    const supabase = await createSupabaseAdminClient();
-    return supabase.schema('member').from('teams').select('*').order('name');
+    const { getTeams } = await import('@/lib/stem-api');
+    const teams = await getTeams();
+    return { data: teams.map(t => ({ id: t.id, name: t.name })), error: null };
 }
 
 export async function getTeamsWithMemberStatus() {
     await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
+    const { getTeams } = await import('@/lib/stem-api');
 
-    // チームとメンバーリレーションを並列取得
-    const [teamsResult, relationsResult] = await Promise.all([
-      supabase.schema('member').from('teams').select('id, name').order('name'),
-      supabase.schema('member').from('member_team_relations').select('member_id, team_id'),
-    ]);
+    const teams = await getTeams();
+    if (!teams.length) return [];
 
-    const { data: teams, error: teamsError } = teamsResult;
-    if (teamsError) return [];
+    const allMemberIds = teams.flatMap(t => t.members.map(m => m.id));
 
-    const { data: memberTeamRelations, error: usersError } = relationsResult;
-    if (usersError || !memberTeamRelations) return teams.map(t => ({ ...t, current: 0, total: 0 }));
-
-    const userIds = memberTeamRelations.map(u => u.member_id);
-
-    const { data: attendanceUserIds, error: attendanceUsersError } = await supabase
+    const { data: attendanceUserIds } = await supabase
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id')
-        .in('supabase_auth_user_id', userIds);
+        .in('supabase_auth_user_id', allMemberIds);
 
-    if (attendanceUsersError) return [];
-
-    const userIdsWithCard = attendanceUserIds.map(u => u.supabase_auth_user_id);
+    const userIdsWithCard = attendanceUserIds?.map(u => u.supabase_auth_user_id) ?? [];
 
     const { data: latestAttendances } = await (supabase as any)
         .rpc('get_latest_attendance_for_users', { user_ids: userIdsWithCard });
 
     const statusMap = new Map<string, string>();
-    if (latestAttendances) {
-        (latestAttendances as any[]).forEach(att => {
-            statusMap.set(att.user_id, att.type);
-        });
-    }
-
-    const memberStatusByTeam = memberTeamRelations.reduce((acc, relation) => {
-        if (!relation.team_id) return acc;
-        if (!acc[relation.team_id]) {
-            acc[relation.team_id] = { current: 0, total: 0 };
-        }
-        acc[relation.team_id].total++;
-        if (statusMap.get(relation.member_id) === 'in') {
-            acc[relation.team_id].current++;
-        }
-        return acc;
-    }, {} as Record<string, { current: number; total: number }>);
+    (latestAttendances as any[] ?? []).forEach(att => statusMap.set(att.user_id, att.type));
 
     return teams.map(team => ({
-        ...team,
-        ...memberStatusByTeam[team.id] || { current: 0, total: 0 },
+        id: team.id,
+        name: team.name,
+        current: team.members.filter(m => statusMap.get(m.id) === 'in').length,
+        total: team.members.length,
     }));
 }
 
@@ -810,38 +724,29 @@ export async function forceToggleAttendance(userId: string) {
 }
 
 export async function getTeamWithMembersStatus(teamId: number) {
-    const supabase = await createSupabaseAdminClient();
-    const { data: { user } } = await (await createSupabaseServerClient()).auth.getUser();
-    if (!user) return { team: null, members: [], stats: null, error: 'Not authenticated' };
-    
-    const { data: profile } = await supabase.schema('member').from('members').select('is_admin, member_team_relations!inner(team_id)').eq('supabase_auth_user_id', user.id).single();
+    const authUser = await requireServerAuth();
+    const { getTeams, getMe } = await import('@/lib/stem-api');
 
-    if (!profile?.is_admin && !profile?.member_team_relations.some(rel => rel.team_id === teamId)) {
+    const [teams, me] = await Promise.all([getTeams(), getMe()]);
+
+    const teamIdStr = String(teamId);
+    const team = teams.find(t => String(t.id) === teamIdStr);
+    if (!team) return { team: null, members: [], stats: null, error: 'Team not found' };
+
+    // アクセス制御: 管理者またはチームメンバーのみ
+    const isAdmin = me?.is_admin || false;
+    const isTeamMember = me?.teams.some(t => String(t.id) === teamIdStr) || false;
+    if (!isAdmin && !isTeamMember) {
         return { team: null, members: [], stats: null, error: 'Access denied' };
     }
 
-    const { data: team, error: teamError } = await supabase.schema('member').from('teams').select('*').eq('id', String(teamId)).single();
-    if(teamError || !team) return { team: null, members: [], stats: null, error: teamError?.message };
+    const memberIds = team.members.map(m => m.id);
 
-    // チームメンバーを取得
-    const { data: teamRelations, error: relError } = await supabase
-        .schema('member')
-        .from('member_team_relations')
-        .select('member_id')
-        .eq('team_id', String(teamId));
-
-    if (relError || !teamRelations?.length) {
-        return { team, members: [], stats: await getTeamStats(teamId as any), error: relError?.message || null };
+    if (memberIds.length === 0) {
+        return { team: { id: team.id, name: team.name }, members: [], stats: await getTeamStats(teamIdStr), error: null };
     }
 
-    const memberIds = teamRelations.map(r => r.member_id);
-    const { data: memberData } = await supabase
-        .schema('member')
-        .from('members')
-        .select('supabase_auth_user_id, discord_username, generation')
-        .in('supabase_auth_user_id', memberIds);
-
-    // 最新打刻を取得
+    const supabase = await createSupabaseAdminClient();
     const { data: latestAttendances } = await supabase
         .schema('attendance')
         .from('attendances')
@@ -854,36 +759,32 @@ export async function getTeamWithMembersStatus(teamId: number) {
         if (!latestMap.has(a.user_id)) latestMap.set(a.user_id, { type: a.type, timestamp: a.timestamp });
     });
 
-    const members = (memberData || []).map(m => {
-        const latest = latestMap.get(m.supabase_auth_user_id);
+    const members = team.members.map(m => {
+        const latest = latestMap.get(m.id);
         return {
-            id: m.supabase_auth_user_id,
-            display_name: m.discord_username || '不明',
+            id: m.id,
+            display_name: m.display_name || '不明',
             generation: m.generation,
             latest_attendance_type: latest?.type || 'out',
             latest_timestamp: latest?.timestamp || null,
         };
     });
 
-    const stats = await getTeamStats(teamId as any);
+    const stats = await getTeamStats(teamIdStr);
 
-    return { team, members: members.sort((a,b) => b.generation - a.generation || a.display_name.localeCompare(b.display_name)), stats: stats, error: null };
+    return { team: { id: team.id, name: team.name }, members: members.sort((a,b) => b.generation - a.generation || a.display_name.localeCompare(b.display_name)), stats, error: null };
 }
 
 
 async function getTeamStats(teamId: string) {
+    const { getTeams } = await import('@/lib/stem-api');
     const supabase = await createSupabaseAdminClient();
     const today = toZonedTime(new Date(), timeZone);
 
-    // OB/OG（status === 2）を除外してチームメンバーを取得
-    const { data: teamMemberRelations } = await supabase
-        .schema('member')
-        .from('member_team_relations')
-        .select('member_id, members!inner(status)')
-        .eq('team_id', teamId)
-        .neq('members.status', 2);
-    
-    const memberIds = teamMemberRelations?.map(m => m.member_id) || [];
+    const teams = await getTeams();
+    const team = teams.find(t => String(t.id) === teamId);
+    // OB/OG（status === 2）を除外
+    const memberIds = team?.members.filter(m => m.status !== 2).map(m => m.id) || [];
     const totalMembersCount = memberIds.length;
     
     if (memberIds.length === 0) {
@@ -923,18 +824,15 @@ async function getTeamStats(teamId: string) {
 
 export async function getMonthlyTeamAttendanceStats(teamId: string, days: number): Promise<number> {
     await requireServerAuth();
+    const { getTeams } = await import('@/lib/stem-api');
     const supabase = await createSupabaseAdminClient();
-    // OB/OG（status === 2）を除外
-    const { data: teamMembers, error: teamMembersError } = await supabase
-        .schema('member')
-        .from('member_team_relations')
-        .select('member_id, members!inner(status)')
-        .eq('team_id', teamId)
-        .neq('members.status', 2);
 
-    if (teamMembersError || !teamMembers || teamMembers.length === 0) return 0;
-    
-    const memberIds = teamMembers.map(m => m.member_id);
+    const teams = await getTeams();
+    const team = teams.find(t => String(t.id) === teamId);
+    // OB/OG（status === 2）を除外
+    const memberIds = team?.members.filter(m => m.status !== 2).map(m => m.id) || [];
+
+    if (memberIds.length === 0) return 0;
 
     const { data: attendanceUsers } = await supabase.schema('attendance').from('users').select('supabase_auth_user_id').in('supabase_auth_user_id', memberIds);
     const attendanceUserIds = attendanceUsers?.map(u => u.supabase_auth_user_id) || [];
@@ -1008,17 +906,11 @@ export async function deleteTempRegistration(id: string) {
 
 export async function updateAllUserDisplayNames(): Promise<{ success: boolean, message: string, count: number }> {
     await requireAdmin();
+    const { getMembers } = await import('@/lib/stem-api');
     const supabase = await createSupabaseAdminClient();
 
-    const { data: users, error: usersError } = await supabase
-        .schema('member')
-        .from('members')
-        .select('supabase_auth_user_id, discord_uid, discord_username');
-
-    if (usersError) {
-        return { success: false, message: `ユーザーの取得に失敗しました: ${usersError.message}`, count: 0 };
-    }
-    if (!users) {
+    const users = await getMembers();
+    if (!users.length) {
         return { success: false, message: '更新対象のユーザーが見つかりません。', count: 0 };
     }
 
@@ -1043,10 +935,10 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
                 .schema('member')
                 .from('members')
                 .update({ discord_username: username })
-                .eq('supabase_auth_user_id', user.supabase_auth_user_id);
+                .eq('supabase_auth_user_id', user.id);
 
             if (updateError) {
-                errors.push(`ID ${user.supabase_auth_user_id} の更新に失敗: ${updateError.message}`);
+                errors.push(`ID ${user.id} の更新に失敗: ${updateError.message}`);
             } else {
                 updatedCount++;
             }
@@ -1065,69 +957,39 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
 export async function getOverallStats(days: number = 30) {
     await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
+    const { getMembers } = await import('@/lib/stem-api');
     const today = toZonedTime(new Date(), timeZone);
     const startDate = formatDate(subDays(today, days), 'yyyy-MM-dd');
     const todayStr = formatDate(today, 'yyyy-MM-dd');
 
-    // 初期クエリを並列実行
-    const [usersWithCardResult, activeMembersResult, distinctDatesResult, allAttendancesResult] = await Promise.all([
-      supabase
-        .schema('attendance')
-        .from('users')
-        .select('supabase_auth_user_id')
-        .not('card_id', 'is', null)
-        .neq('card_id', ''),
-      supabase
-        .schema('member')
-        .from('members')
-        .select('supabase_auth_user_id')
-        .neq('status', 2)
-        .is('deleted_at', null),
-      supabase
-        .schema('attendance')
-        .from('attendances')
-        .select('date')
-        .gte('date', startDate),
-      supabase
-        .schema('attendance')
-        .from('attendances')
-        .select('user_id, type, timestamp')
-        .gte('date', startDate)
-        .order('user_id')
-        .order('timestamp', { ascending: true }),
+    const [members, usersWithCardResult, distinctDatesResult, allAttendancesResult] = await Promise.all([
+      getMembers(),
+      supabase.schema('attendance').from('users').select('supabase_auth_user_id').not('card_id', 'is', null).neq('card_id', ''),
+      supabase.schema('attendance').from('attendances').select('date').gte('date', startDate),
+      supabase.schema('attendance').from('attendances').select('user_id, type, timestamp').gte('date', startDate).order('user_id').order('timestamp', { ascending: true }),
     ]);
 
     const userIdsWithCard = usersWithCardResult.data?.map(u => u.supabase_auth_user_id) || [];
+    const activeMembers = members.filter(m => m.status !== 2 && !m.deleted_at);
+    const totalMembers = activeMembers.filter(m => userIdsWithCard.includes(m.id)).length;
 
-    // 今日の出勤者を取得（userIdsWithCardに依存するが、上記と並列化するためallAttendancesからフィルタ）
-    const todayAttendances = allAttendancesResult.data?.filter(
-      a => a.type === 'in' && userIdsWithCard.includes(a.user_id)
-    );
-    // 今日のデータはdistinctDatesからも推定できるが、正確にはtodayの出勤者を計算
     const todayInRecords = allAttendancesResult.data?.filter(a => {
-      const attDate = new Date(a.timestamp);
-      const attDateStr = formatDate(toZonedTime(attDate, timeZone), 'yyyy-MM-dd');
+      const attDateStr = formatDate(toZonedTime(new Date(a.timestamp), timeZone), 'yyyy-MM-dd');
       return attDateStr === todayStr && a.type === 'in' && userIdsWithCard.includes(a.user_id);
     });
     const todayActiveUsers = todayInRecords ? new Set(todayInRecords.map(a => a.user_id)).size : 0;
-
-    const activeMemberIds = activeMembersResult.data?.map(m => m.supabase_auth_user_id) || [];
-    const totalMembers = activeMemberIds.filter(id => userIdsWithCard.includes(id)).length;
-
     const activeDaysCount = distinctDatesResult.data ? new Set(distinctDatesResult.data.map(d => d.date)).size : 0;
 
     let totalActivityHours = 0;
     if (allAttendancesResult.data) {
         const userSessions = new Map<string, Date | null>();
-
         for (const att of allAttendancesResult.data) {
             if (att.type === 'in') {
                 userSessions.set(att.user_id, new Date(att.timestamp));
             } else if (att.type === 'out') {
                 const inTime = userSessions.get(att.user_id);
                 if (inTime) {
-                    const duration = differenceInSeconds(new Date(att.timestamp), inTime) / 3600;
-                    totalActivityHours += duration;
+                    totalActivityHours += differenceInSeconds(new Date(att.timestamp), inTime) / 3600;
                     userSessions.set(att.user_id, null);
                 }
             }
