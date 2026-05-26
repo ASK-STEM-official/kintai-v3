@@ -453,15 +453,15 @@ export default function KioskPage() {
         }
       ).subscribe();
 
-    // Polling fallback: Realtimeが届かない場合に備えてAPIを1秒ごとに確認（admin経由でRLS無視）
+    // Polling fallback: Realtimeが届かない場合に備えて1秒ごとに確認
     const checkUsed = async () => {
-      try {
-        const res = await fetch(`/api/qr-status/${qrToken}`);
-        if (res.ok) {
-          const { closed } = await res.json();
-          if (closed) resetToIdle();
-        }
-      } catch { /* ignore */ }
+      const { data } = await supabase
+        .schema('attendance')
+        .from('temp_registrations')
+        .select('accessed_at, is_used')
+        .eq('qr_token', qrToken)
+        .single();
+      if (data?.accessed_at || data?.is_used) resetToIdle();
     };
     const poll = setInterval(checkUsed, 1000);
 
