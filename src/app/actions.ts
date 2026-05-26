@@ -239,7 +239,7 @@ export async function completeRegistration(formData: FormData) {
 
   if (!member) {
     console.warn(`Attempted registration for non-existent member profile: ${oauthUser.id}`);
-    return redirect(`/register/${token}?error=ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。`);
+    return redirect(`/register/${token}?error=${encodeURIComponent('ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。')}`);
   }
 
   const { data: tempReg, error: tempRegError } = await adminSupabase
