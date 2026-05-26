@@ -233,11 +233,17 @@ export async function completeRegistration(formData: FormData) {
   if (!oauthUser) {
     return redirect(`/register/${token}?error=Not authenticated`);
   }
-  
-  const { getMe } = await import('@/lib/stem-api');
-  const member = await getMe();
 
-  if (!member) {
+  // 部員プロファイルを直接DBで確認（HTTP APIを介さず確実に）
+  const { data: memberProfile } = await adminSupabase
+    .schema('member')
+    .from('members')
+    .select('supabase_auth_user_id')
+    .eq('supabase_auth_user_id', oauthUser.id)
+    .is('deleted_at', null)
+    .single();
+
+  if (!memberProfile) {
     console.warn(`Attempted registration for non-existent member profile: ${oauthUser.id}`);
     return redirect(`/register/${token}?error=${encodeURIComponent('ユーザープロファイルが中央DBに存在しません。管理者に連絡してください。')}`);
   }
