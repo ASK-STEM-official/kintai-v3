@@ -30,7 +30,7 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
             adminSupabase
                 .schema('member')
                 .from('members')
-                .select('discord_uid, discord_username, display_name')
+                .select('discord_uid, discord_username')
                 .eq('supabase_auth_user_id', oauthUser.id)
                 .single(),
             adminSupabase
@@ -48,7 +48,6 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
         // ニックネームはクライアント側で非同期取得して上書きする。
         displayName =
             (oauthUser.displayName !== '名無しさん' ? oauthUser.displayName : null)
-            ?? memberProfile?.display_name
             ?? memberProfile?.discord_username
             ?? null;
 
