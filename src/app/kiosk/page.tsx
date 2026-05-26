@@ -438,22 +438,37 @@ export default function KioskPage() {
   }, []);
 
   useEffect(() => {
-    if (!qrToken) return;
+    if (!qrToken || kioskState !== 'qr') return;
 
+    // Realtime subscription
     const channel = supabase
       .channel(`kiosk-qr-channel-${qrToken}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'attendance', table: 'temp_registrations', filter: `qr_token=eq.${qrToken}` },
         (payload) => {
-          if ((payload.new.accessed_at || payload.new.is_used) && kioskState === 'qr') {
+          if (payload.new.accessed_at || payload.new.is_used) {
             resetToIdle();
           }
         }
       ).subscribe();
-    
+
+    // Polling fallback: Realtimeが届かない場合に備えて3秒ごとに確認
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .schema('attendance')
+        .from('temp_registrations')
+        .select('accessed_at, is_used')
+        .eq('qr_token', qrToken)
+        .single();
+      if (data && (data.accessed_at || data.is_used)) {
+        resetToIdle();
+      }
+    }, 3000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(poll);
     };
   }, [supabase, qrToken, resetToIdle, kioskState]);
   
