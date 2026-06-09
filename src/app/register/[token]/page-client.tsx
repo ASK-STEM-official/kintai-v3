@@ -19,7 +19,7 @@ function SubmitButton({ isUpdate }: { isUpdate: boolean }) {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" className="w-full" size="lg" disabled={pending}>
-            {pending ? (isUpdate ? "更新中..." : "登録中...") : (isUpdate ? "カードを更新する" : "登録を完了する")}
+            {pending ? (isUpdate ? "追加中..." : "登録中...") : (isUpdate ? "カードを追加する" : "登録を完了する")}
         </Button>
     );
 }
@@ -29,7 +29,7 @@ function RegisterForm({ token, isUpdate }: { token: string, isUpdate: boolean })
     <form action={completeRegistration} className="space-y-4">
       <input type="hidden" name="token" value={token} />
        <div className='text-sm text-muted-foreground text-center'>
-        ユーザー情報を確認しました。下のボタンを押して、このカードの{isUpdate ? "更新" : "登録"}を完了してください。
+        ユーザー情報を確認しました。下のボタンを押して、このカードの{isUpdate ? "追加" : "登録"}を完了してください。
       </div>
       <SubmitButton isUpdate={isUpdate} />
     </form>
@@ -112,7 +112,7 @@ export default function RegisterPageClient({
                 <Card className="w-full max-w-md">
                     <CardHeader className="items-center text-center">
                         <Icons.CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
-                        <CardTitle className="text-2xl">{isUpdateFlow ? "カードが更新されました！" : "登録が完了しました!"}</CardTitle>
+                        <CardTitle className="text-2xl">{isUpdateFlow ? "カードが追加されました！" : "登録が完了しました!"}</CardTitle>
                         <CardDescription>ダッシュボードへ移動できます</CardDescription>
                     </CardHeader>
                     <CardContent className='space-y-4'>
@@ -164,8 +164,8 @@ export default function RegisterPageClient({
         <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-2xl"><Icons.UserPlus /> {isUpdateFlow ? "カードの更新" : "カード登録"}</CardTitle>
-                    <CardDescription>QRコードスキャンありがとうございます。STEMで認証して登録を完了してください。</CardDescription>
+                    <CardTitle className="flex items-center gap-2 text-2xl"><Icons.UserPlus /> {isUpdateFlow ? "カードの追加" : "カード登録"}</CardTitle>
+                    <CardDescription>QRコードスキャンありがとうございます。STEMで認証して{isUpdateFlow ? "追加" : "登録"}を完了してください。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {error && (
@@ -222,7 +222,7 @@ export default function RegisterPageClient({
                             size="lg"
                         >
                             <Icons.Logo className="w-5 h-5 mr-2" />
-                            {loading ? 'リダイレクト中...' : `STEMで認証して${isUpdateFlow ? "更新" : "登録"}する`}
+                            {loading ? 'リダイレクト中...' : `STEMで認証して${isUpdateFlow ? "追加" : "登録"}する`}
                         </Button>
                     ) : (
                         <RegisterForm token={token} isUpdate={isUpdateFlow} />
