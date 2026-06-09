@@ -514,7 +514,7 @@ export async function getAllUsersWithStatus() {
       supabase.schema('attendance').from('user_cards').select('supabase_auth_user_id, card_id'),
     ]);
 
-    if (!members.length) return { data: [], error: null };
+    if (!members.length) return { data: [], error: new Error('stem-system API からメンバー一覧を取得できませんでした。Vercel ログを確認してください。') };
 
     const cardMap = new Map<string, string[]>();
     userCardsResult.data?.forEach(uc => {

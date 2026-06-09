@@ -49,9 +49,14 @@ export async function getMe(): Promise<StemMember | null> {
 export async function getMembers(): Promise<StemMember[]> {
   try {
     const res = await stemFetch('/api/v1/members');
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[stem-api] getMembers: ${res.status} ${res.statusText} — ${body}`);
+      return [];
+    }
     return res.json();
-  } catch {
+  } catch (e) {
+    console.error('[stem-api] getMembers error:', e);
     return [];
   }
 }
