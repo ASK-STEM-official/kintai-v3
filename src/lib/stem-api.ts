@@ -2,7 +2,11 @@
 
 import { cookies } from 'next/headers';
 
-const STEM_URL = process.env.NEXT_PUBLIC_STEM_SYSTEM_URL ?? process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL;
+const STEM_URL = (() => {
+  const raw = process.env.NEXT_PUBLIC_STEM_SYSTEM_URL ?? process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL;
+  if (!raw) return undefined;
+  try { return new URL(raw).origin; } catch { return raw; }
+})();
 
 export type StemMember = {
   id: string;
