@@ -47,7 +47,7 @@ export default function RegisterPageClient({
     isAuthenticated,
     displayName: initialDisplayName,
     discordUsername,
-    existingCardId,
+    existingCardIds,
     discordId,
 }: {
     token: string,
@@ -55,7 +55,7 @@ export default function RegisterPageClient({
     isAuthenticated?: boolean,
     displayName?: string | null,
     discordUsername?: string | null,
-    existingCardId?: string | null,
+    existingCardIds?: string[],
     discordId?: string | null,
 }) {
     const searchParams = useSearchParams();
@@ -72,7 +72,7 @@ export default function RegisterPageClient({
         });
     }, [discordId]);
 
-    const isUpdateFlow = !!existingCardId && existingCardId !== tempReg?.card_id;
+    const isUpdateFlow = (existingCardIds?.length ?? 0) > 0 && !existingCardIds?.includes(tempReg?.card_id ?? '');
 
     if (token === 'card-unregistered') {
         return (
@@ -193,10 +193,14 @@ export default function RegisterPageClient({
                                 <span className="text-muted-foreground">新しいカードID:</span>
                                 <span className="font-mono font-medium">{tempReg.card_id}</span>
                             </div>
-                            {isUpdateFlow && (
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">現在のカードID:</span>
-                                    <span className="font-mono font-medium text-destructive line-through">{existingCardId}</span>
+                            {isUpdateFlow && existingCardIds && existingCardIds.length > 0 && (
+                                <div className="flex justify-between items-start gap-2">
+                                    <span className="text-muted-foreground shrink-0">登録済みカード:</span>
+                                    <div className="flex flex-col items-end gap-1">
+                                        {existingCardIds.map(id => (
+                                            <span key={id} className="font-mono font-medium text-xs">{id}</span>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </CardContent>

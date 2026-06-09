@@ -94,7 +94,8 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
 
     const attendanceRate = totalClubDays > 0 ? (userAttendanceDays / totalClubDays) * 100 : 0;
     
-    const teamName = profile?.member_team_relations?.[0]?.teams?.name;
+    const teamsData = profile?.member_team_relations?.[0]?.teams;
+    const teamName = Array.isArray(teamsData) ? teamsData[0]?.name : (teamsData as { name?: string } | null)?.name;
 
   return (
     <div className="space-y-6">

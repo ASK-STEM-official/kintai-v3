@@ -11,8 +11,9 @@ import { convertGenerationToGrade } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
-export default async function TeamStatusPage({ params }: { params: { id: string } }) {
-    const teamId = Number(params.id);
+export default async function TeamStatusPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = await params;
+    const teamId = Number(id);
     const { team, members, stats, error } = await getTeamWithMembersStatus(teamId);
 
     if (error === 'Access denied') {

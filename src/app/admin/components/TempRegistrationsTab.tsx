@@ -41,14 +41,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
 interface TempRegistrationsTabProps {
-  tempRegistrations: Tables<'temp_registrations'>[];
+  tempRegistrations: Tables<'attendance', 'temp_registrations'>[];
 }
 
 export default function TempRegistrationsTab({ tempRegistrations: initialTempRegistrations }: TempRegistrationsTabProps) {
   const { toast } = useToast();
   const [showAll, setShowAll] = useState(false);
   
-  const getStatus = (reg: Tables<'temp_registrations'>) => {
+  const getStatus = (reg: Tables<'attendance', 'temp_registrations'>) => {
     if (reg.is_used) {
       return { text: "使用済み", variant: "default" as const, active: false };
     }

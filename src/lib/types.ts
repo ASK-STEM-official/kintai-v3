@@ -129,11 +129,102 @@ export type Database = {
           },
         ]
       }
+      user_cards: {
+        Row: {
+          id: string
+          supabase_auth_user_id: string
+          card_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          supabase_auth_user_id: string
+          card_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          supabase_auth_user_id?: string
+          card_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_cards_supabase_auth_user_id_fkey"
+            columns: ["supabase_auth_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["supabase_auth_user_id"]
+          },
+        ]
+      }
+      temp_checkin_tokens: {
+        Row: {
+          id: string
+          token: string
+          expires_at: string
+          is_used: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          token: string
+          expires_at: string
+          is_used?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          token?: string
+          expires_at?: string
+          is_used?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      create_checkin_token: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      has_checkin_token_been_used: {
+        Args: {
+          p_token: string
+        }
+        Returns: boolean
+      }
+      record_attendance_with_token: {
+        Args: {
+          p_user_id: string
+          p_token: string
+        }
+        Returns: {
+          success: boolean
+          message: string
+          user: {
+            display_name: string | null
+          } | null
+          type: string | null
+        }
+      }
+      record_attendance_by_card: {
+        Args: {
+          p_card_id: string
+        }
+        Returns: {
+          success: boolean
+          message: string
+          user: {
+            display_name: string | null
+            discord_uid: string | null
+          } | null
+          type: string | null
+        }
+      }
       get_currently_in_user_ids: {
         Args: Record<PropertyKey, never>
         Returns: string[]
@@ -221,7 +312,6 @@ export type Database = {
           deleted_at: string | null
           discord_uid: string
           discord_username: string | null
-          display_name: string
           generation: number
           is_admin: boolean
           joined_at: string
@@ -234,7 +324,6 @@ export type Database = {
           deleted_at?: string | null
           discord_uid: string
           discord_username?: string | null
-          display_name: string
           generation: number
           is_admin?: boolean
           joined_at?: string
@@ -247,7 +336,6 @@ export type Database = {
           deleted_at?: string | null
           discord_uid?: string
           discord_username?: string | null
-          display_name?: string
           generation?: number
           is_admin?: boolean
           joined_at?: string

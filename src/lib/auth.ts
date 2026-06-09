@@ -8,6 +8,7 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/sup
 import { redirect } from 'next/navigation';
 import { jwtVerify } from 'jose';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/types';
 
 export type AuthUser = {
   id: string;
@@ -78,7 +79,8 @@ export async function getOAuthUser(): Promise<AuthUser | null> {
  * OAuth の場合は admin client（RLS バイパス）を返す。
  * 未認証なら /login にリダイレクト。
  */
-export async function requireAuth(): Promise<{ userId: string; supabase: SupabaseClient }> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function requireAuth(): Promise<{ userId: string; supabase: SupabaseClient<Database, any, any> }> {
   // OAuth を先にチェック
   const oauthUser = await getOAuthUser();
   if (oauthUser) {

@@ -20,13 +20,13 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
     
     let displayName: string | null = null;
     let discordUsername: string | null = null;
-    let existingCardId: string | null = null;
+    let existingCardIds: string[] = [];
     let discordId: string | null = null;
 
     if (oauthUser) {
         const adminSupabase = await createSupabaseAdminClient();
 
-        const [memberProfileResult, attendanceUserResult] = await Promise.all([
+        const [memberProfileResult, existingCardsResult] = await Promise.all([
             adminSupabase
                 .schema('member')
                 .from('members')
@@ -35,10 +35,9 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
                 .single(),
             adminSupabase
                 .schema('attendance')
-                .from('users')
+                .from('user_cards')
                 .select('card_id')
-                .eq('supabase_auth_user_id', oauthUser.id)
-                .single(),
+                .eq('supabase_auth_user_id', oauthUser.id),
         ]);
 
         const memberProfile = memberProfileResult.data;
@@ -52,7 +51,7 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
             ?? null;
 
         discordUsername = memberProfile?.discord_username ?? null;
-        existingCardId = attendanceUserResult.data?.card_id ?? null;
+        existingCardIds = existingCardsResult.data?.map(c => c.card_id) ?? [];
     }
 
     return (
@@ -62,7 +61,7 @@ async function RegisterPageImpl({ params }: { params: Promise<{ token: string }>
             isAuthenticated={!!oauthUser}
             displayName={displayName}
             discordUsername={discordUsername}
-            existingCardId={existingCardId}
+            existingCardIds={existingCardIds}
             discordId={discordId}
         />
     );

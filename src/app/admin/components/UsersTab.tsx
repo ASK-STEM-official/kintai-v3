@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowUpDown, Search, RefreshCw, Edit, Eye, Filter } from "lucide-react"
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { forceToggleAttendance, updateAllUserDisplayNames, updateUserCardId, fetchAllUserRealNames } from '@/app/actions';
+import { forceToggleAttendance, updateAllUserDisplayNames, addUserCard, removeUserCard, fetchAllUserRealNames } from '@/app/actions';
 import { Tables } from '@/lib/types';
 import { User } from '@supabase/supabase-js';
 import { convertGenerationToGrade } from '@/lib/utils';
@@ -55,7 +55,7 @@ type UserWithDetails = {
     id: string;
     display_name: string;
     discord_username: string | null;
-    card_id: string | null;
+    card_ids: string[];
     team_name: string | null;
     team_id: string | null;
     generation: number;
@@ -72,7 +72,7 @@ type SortDirection = 'asc' | 'desc';
 
 interface UsersTabProps {
     users: UserWithDetails[];
-    teams: Tables<'member', 'teams'>[];
+    teams: { id: string; name: string }[];
     currentUser: User;
 }
 
@@ -166,7 +166,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
     const [isToggling, startToggleTransition] = useTransition();
     const [isUpdatingNames, startUpdatingNamesTransition] = useTransition();
     const [isUpdatingCardId, startUpdatingCardIdTransition] = useTransition();
-    const [editingUser, setEditingUser] = useState<{ id: string; currentCardId: string } | null>(null);
+    const [editingUser, setEditingUser] = useState<{ id: string; name: string } | null>(null);
     const [newCardId, setNewCardId] = useState('');
     
     // 本名表示トグル
@@ -223,18 +223,28 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
         });
     };
 
-    const handleUpdateCardId = (userId: string) => {
+    const handleAddCard = (userId: string) => {
         startUpdatingCardIdTransition(async () => {
-            const result = await updateUserCardId(userId, newCardId);
+            const result = await addUserCard(userId, newCardId);
             toast({
                 title: result.success ? "成功" : "エラー",
                 description: result.message,
                 variant: result.success ? "default" : "destructive",
             });
             if (result.success) {
-                setEditingUser(null);
                 setNewCardId('');
             }
+        });
+    };
+
+    const handleRemoveCard = (userId: string, cardId: string) => {
+        startUpdatingCardIdTransition(async () => {
+            const result = await removeUserCard(userId, cardId);
+            toast({
+                title: result.success ? "成功" : "エラー",
+                description: result.message,
+                variant: result.success ? "default" : "destructive",
+            });
         });
     };
 
@@ -252,7 +262,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
             const realName = realNameMap[user.id];
             const matchesSearch = user.display_name?.toLowerCase().includes(term) ||
                 (realName && realName.toLowerCase().includes(term)) ||
-                (user.card_id && user.card_id.toLowerCase().includes(term)) ||
+                user.card_ids.some(id => id.toLowerCase().includes(term)) ||
                 (user.student_number && user.student_number.toLowerCase().includes(term));
             
             if (!matchesSearch) return false;
@@ -273,7 +283,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
             
             // カードID有無フィルター
             if (filterHasCardId !== 'all') {
-                const hasCardId = !!user.card_id;
+                const hasCardId = user.card_ids.length > 0;
                 if (hasCardId !== filterHasCardId) return false;
             }
             
@@ -435,7 +445,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                         <SortableHeader sortKey="generation" currentSort={sort} onSort={handleSort}>学年/期生</SortableHeader>
                         <SortableHeader sortKey="status" currentSort={sort} onSort={handleSort}>ステータス</SortableHeader>
                         <SortableHeader sortKey="latest_attendance_type" currentSort={sort} onSort={handleSort}>出勤状態</SortableHeader>
-                        <SortableHeader sortKey="card_id" currentSort={sort} onSort={handleSort}>カードID</SortableHeader>
+                        <TableHead>カードID</TableHead>
                         <TableHead>アクション</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -459,7 +469,16 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                     {getAttendanceStatusLabel(attendanceStatus)}
                                 </Badge>
                             </TableCell>
-                            <TableCell className="font-mono text-sm">{user.card_id || <span className="text-muted-foreground">未登録</span>}</TableCell>
+                            <TableCell>
+                                {user.card_ids.length > 0
+                                    ? <div className="flex flex-wrap gap-1">
+                                        {user.card_ids.map(id => (
+                                            <Badge key={id} variant="outline" className="font-mono text-xs">{id}</Badge>
+                                        ))}
+                                      </div>
+                                    : <span className="text-muted-foreground">未登録</span>
+                                }
+                            </TableCell>
                             <TableCell className="space-x-2">
                                 <div className="flex items-center gap-2">
                                     <Button size="sm" variant="outline" asChild>
@@ -476,8 +495,8 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                     }}>
                                         <DialogTrigger asChild>
                                             <Button size="sm" variant="outline" onClick={() => {
-                                                setEditingUser({ id: user.id, currentCardId: user.card_id || '' });
-                                                setNewCardId(user.card_id || '');
+                                                setEditingUser({ id: user.id, name: user.display_name });
+                                                setNewCardId('');
                                             }}>
                                                 <Edit className="h-4 w-4 mr-1" />
                                                 カードID
@@ -485,24 +504,41 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                         </DialogTrigger>
                                         <DialogContent>
                                             <DialogHeader>
-                                                <DialogTitle>カードIDを変更</DialogTitle>
+                                                <DialogTitle>カードIDを管理</DialogTitle>
                                                 <DialogDescription>
-                                                    {showRealName ? (realNameMap[user.id] || user.display_name) : user.display_name} さんのカードIDを変更します
+                                                    {showRealName ? (realNameMap[user.id] || user.display_name) : user.display_name} さんのカードIDを追加・削除します
                                                 </DialogDescription>
                                             </DialogHeader>
                                             <div className="grid gap-4 py-4">
+                                                {user.card_ids.length > 0 && (
+                                                    <div className="grid gap-2">
+                                                        <Label>登録済みカード</Label>
+                                                        <div className="flex flex-col gap-2">
+                                                            {user.card_ids.map(id => (
+                                                                <div key={id} className="flex items-center justify-between rounded border px-3 py-2">
+                                                                    <code className="font-mono text-sm">{id}</code>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="destructive"
+                                                                        onClick={() => handleRemoveCard(user.id, id)}
+                                                                        disabled={isUpdatingCardId}
+                                                                    >
+                                                                        削除
+                                                                    </Button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div className="grid gap-2">
-                                                    <Label htmlFor="cardId">新しいカードID</Label>
+                                                    <Label htmlFor="newCardId">カードIDを追加</Label>
                                                     <Input
-                                                        id="cardId"
+                                                        id="newCardId"
                                                         value={newCardId}
                                                         onChange={(e) => setNewCardId(e.target.value)}
                                                         placeholder="カードIDを入力"
                                                         className="font-mono"
                                                     />
-                                                    <p className="text-sm text-muted-foreground">
-                                                        現在: <code className="font-mono">{user.card_id || '未設定'}</code>
-                                                    </p>
                                                 </div>
                                             </div>
                                             <DialogFooter>
@@ -510,10 +546,10 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                                     setEditingUser(null);
                                                     setNewCardId('');
                                                 }}>
-                                                    キャンセル
+                                                    閉じる
                                                 </Button>
-                                                <Button onClick={() => handleUpdateCardId(user.id)} disabled={isUpdatingCardId || !newCardId}>
-                                                    {isUpdatingCardId ? '更新中...' : '更新'}
+                                                <Button onClick={() => handleAddCard(user.id)} disabled={isUpdatingCardId || !newCardId.trim()}>
+                                                    {isUpdatingCardId ? '追加中...' : '追加'}
                                                 </Button>
                                             </DialogFooter>
                                         </DialogContent>

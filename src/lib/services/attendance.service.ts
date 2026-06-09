@@ -14,22 +14,22 @@ export async function forceToggleAttendance(userId: string) {
     try {
         await requireAdmin();
 
-        const { data: attendanceUser, error: attUserError } = await supabase
+        // user_cards から最初のカードを取得（なければ admin_force を使用）
+        const { data: userCard } = await supabase
             .schema('attendance')
-            .from('users')
-            .select('supabase_auth_user_id, card_id')
+            .from('user_cards')
+            .select('card_id')
             .eq('supabase_auth_user_id', userId)
-            .single();
-        
-        if (attUserError || !attendanceUser) {
-            return { success: false, message: '勤怠ユーザーが見つかりません。' };
-        }
+            .limit(1)
+            .maybeSingle();
+
+        const cardId = userCard?.card_id ?? 'admin_force';
 
         const { data: lastAttendance, error: lastAttendanceError } = await supabase
             .schema('attendance')
             .from('attendances')
             .select('type')
-            .eq('user_id', attendanceUser.supabase_auth_user_id)
+            .eq('user_id', userId)
             .order('timestamp', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -44,9 +44,9 @@ export async function forceToggleAttendance(userId: string) {
             .schema('attendance')
             .from('attendances')
             .insert({ 
-                user_id: attendanceUser.supabase_auth_user_id, 
+                user_id: userId, 
                 type: newType, 
-                card_id: attendanceUser.card_id 
+                card_id: cardId
             });
 
         if (insertError) {

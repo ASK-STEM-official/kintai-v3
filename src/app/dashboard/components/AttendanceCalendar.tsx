@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Calendar } from '@/components/ui/calendar';
-import { getMonthlyAttendance } from '@/app/actions';
+import { getMonthlyAttendance, getAttendanceDayRecords } from '@/app/actions';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { toZonedTime } from 'date-fns-tz';
 import { formatJst } from '@/lib/utils';
 
@@ -53,18 +52,10 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
         return;
       }
 
-      const supabase = createSupabaseBrowserClient();
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const records = await getAttendanceDayRecords(userId, dateStr);
 
-      const { data: records, error } = await supabase
-        .schema('attendance')
-        .from('attendances')
-        .select('type, timestamp')
-        .eq('user_id', userId)
-        .eq('date', dateStr)
-        .order('timestamp');
-
-      if (error || !records || records.length === 0) {
+      if (!records || records.length === 0) {
         setAttendanceDetails(null);
         return;
       }
@@ -88,8 +79,9 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
         }
       });
       
-      if (lastInTime) {
-        totalMinutes += (new Date().getTime() - lastInTime.getTime()) / (1000 * 60);
+      const finalInTime = lastInTime as Date | null;
+      if (finalInTime !== null) {
+        totalMinutes += (new Date().getTime() - finalInTime.getTime()) / (1000 * 60);
       }
 
       setAttendanceDetails({

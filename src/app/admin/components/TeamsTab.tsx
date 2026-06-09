@@ -94,7 +94,7 @@ export default function TeamsTab({ teams: initialTeams }: TeamsTabProps) {
     setIsSubmitting(false);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     const result = await deleteTeam(id);
     if (result.success) {
       toast({ title: "成功", description: result.message });

@@ -43,10 +43,9 @@ export default async function DashboardPage() {
         .single(),
       supabase
         .schema('attendance')
-        .from('users')
-        .select('card_id')
-        .eq('supabase_auth_user_id', userId)
-        .single(),
+        .from('user_cards')
+        .select('card_id', { count: 'exact', head: true })
+        .eq('supabase_auth_user_id', userId),
     ]);
 
     const { data: profile, error: profileError } = profileResult;
@@ -56,7 +55,7 @@ export default async function DashboardPage() {
         redirect('/register/member-unregistered');
     }
 
-    const hasCardId = attendanceUserResult.data?.card_id && attendanceUserResult.data.card_id.trim() !== '';
+    const hasCardId = (attendanceUserResult.count ?? 0) > 0;
 
     // discord_usernameをDBから取得（Discord API不要）
     const displayName = profile.discord_username || '名無しさん';
@@ -94,7 +93,8 @@ export default async function DashboardPage() {
 
     const attendanceRate = totalClubDays > 0 ? (userAttendanceDays / totalClubDays) * 100 : 0;
 
-    const teamName = profile?.member_team_relations?.[0]?.teams?.name;
+    const teamsData = profile?.member_team_relations?.[0]?.teams;
+    const teamName = Array.isArray(teamsData) ? teamsData[0]?.name : (teamsData as { name?: string } | null)?.name;
 
   return (
     <div className="space-y-6">

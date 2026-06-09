@@ -84,8 +84,11 @@ async function recordAttendanceInternal(cardId: string, traceId: string): Promis
   }
 
   // discord_uid をクライアントに返さない
-  const { discord_uid, ...userWithoutDiscordUid } = result.user || { discord_uid: null };
-  return { ...result, user: result.user ? userWithoutDiscordUid : null };
+  if (result.user) {
+    const { discord_uid: _uid, ...userWithoutDiscordUid } = result.user;
+    return { ...result, user: userWithoutDiscordUid };
+  }
+  return { ...result, user: null };
 }
 
 
@@ -155,20 +158,20 @@ async function createTempRegistrationInternal(cardId: string, traceId: string): 
   console.log(`[CREATE_TEMP_REG:${traceId}] Start - Card ID: ${cardId.substring(0, 10)}...`);
   
   const existingStart = Date.now();
-  const { data: existingUser, error: existingUserError } = await supabase
+  const { data: existingCard, error: existingCardError } = await supabase
     .schema('attendance')
-    .from('users')
+    .from('user_cards')
     .select('supabase_auth_user_id')
     .eq('card_id', normalizedCardId)
     .single();
   console.log(`[CREATE_TEMP_REG:${traceId}] User lookup: ${Date.now() - existingStart}ms`);
 
-  if (existingUserError && existingUserError.code !== 'PGRST116') { // Ignore "No rows found" error
-    console.error(`[CREATE_TEMP_REG:${traceId}] Error checking for existing card:`, existingUserError);
+  if (existingCardError && existingCardError.code !== 'PGRST116') {
+    console.error(`[CREATE_TEMP_REG:${traceId}] Error checking for existing card:`, existingCardError);
     return { success: false, message: "カード情報の確認中にデータベースエラーが発生しました。" };
   }
   
-  if (existingUser) {
+  if (existingCard) {
     console.log(`[CREATE_TEMP_REG:${traceId}] Already registered card`);
     return { success: false, message: 'このカードは既に登録されています。' };
   }
@@ -266,20 +269,35 @@ export async function completeRegistration(formData: FormData) {
   }
   
   const newCardId = tempReg.card_id;
-  
-  const { error: insertAttendanceUserError } = await adminSupabase
+
+  // attendance.users 行が既にあるか確認
+  const { data: existingAttUser } = await adminSupabase
     .schema('attendance')
     .from('users')
-    .upsert(
-      { 
-        supabase_auth_user_id: oauthUser.id,
-        card_id: newCardId
-      }, 
-      { onConflict: 'supabase_auth_user_id' }
-    );
-  if (insertAttendanceUserError) {
-      console.error("Error creating attendance user link:", insertAttendanceUserError);
+    .select('supabase_auth_user_id')
+    .eq('supabase_auth_user_id', oauthUser.id)
+    .single();
+
+  if (existingAttUser) {
+    // 既存ユーザー: attendance.users は変更せず user_cards に直接追加（既存カードを保持）
+    const { error: insertCardError } = await adminSupabase
+      .schema('attendance')
+      .from('user_cards')
+      .insert({ supabase_auth_user_id: oauthUser.id, card_id: newCardId });
+    if (insertCardError) {
+      console.error("Error adding card to user_cards:", insertCardError);
+      return redirect(`/register/${token}?error=${encodeURIComponent('このカードは既に使用されています。')}`);
+    }
+  } else {
+    // 新規ユーザー: attendance.users を作成（トリガーが user_cards へ自動同期）
+    const { error: insertUserError } = await adminSupabase
+      .schema('attendance')
+      .from('users')
+      .insert({ supabase_auth_user_id: oauthUser.id, card_id: newCardId });
+    if (insertUserError) {
+      console.error("Error creating attendance user link:", insertUserError);
       return redirect(`/register/${token}?error=Failed to link card to user.`);
+    }
   }
   
   await adminSupabase.schema('attendance').from('temp_registrations').update({ is_used: true }).eq('id', tempReg.id);
@@ -392,6 +410,20 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
   }));
 }
 
+export async function getAttendanceDayRecords(userId: string, date: string): Promise<{ type: string; timestamp: string }[]> {
+  await requireServerAuth();
+  const supabase = await createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .schema('attendance')
+    .from('attendances')
+    .select('type, timestamp')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .order('timestamp');
+  if (error) return [];
+  return data ?? [];
+}
+
 export async function getMonthlyAttendanceSummary(month: Date) {
   await requireServerAuth();
   const supabase = await createSupabaseAdminClient();
@@ -477,14 +509,19 @@ export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
     const { getMembers } = await import('@/lib/stem-api');
 
-    const [members, attendanceUsersResult] = await Promise.all([
+    const [members, userCardsResult] = await Promise.all([
       getMembers(),
-      supabase.schema('attendance').from('users').select('supabase_auth_user_id, card_id'),
+      supabase.schema('attendance').from('user_cards').select('supabase_auth_user_id, card_id'),
     ]);
 
     if (!members.length) return { data: [], error: null };
 
-    const cardMap = new Map(attendanceUsersResult.data?.map(u => [u.supabase_auth_user_id, u.card_id]) || []);
+    const cardMap = new Map<string, string[]>();
+    userCardsResult.data?.forEach(uc => {
+      const arr = cardMap.get(uc.supabase_auth_user_id) || [];
+      arr.push(uc.card_id);
+      cardMap.set(uc.supabase_auth_user_id, arr);
+    });
     const memberIds = members.map(m => m.id);
 
     const { data: latestAttendances } = await supabase
@@ -508,7 +545,7 @@ export async function getAllUsersWithStatus() {
         id: member.id,
         display_name: member.discord_username || member.display_name || '不明',
         discord_username: member.discord_username || null,
-        card_id: cardMap.get(member.id) || null,
+        card_ids: cardMap.get(member.id) || [],
         team_name: team?.name || null,
         team_id: team?.id || null,
         generation: member.generation,
@@ -609,7 +646,7 @@ export async function createTeam(name: string) {
     return { success: true, message: '班を作成しました。'};
 }
 
-export async function updateTeam(id: number, name: string) {
+export async function updateTeam(id: string, name: string) {
     await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     const { error } = await supabase.schema('member').from('teams').update({ name }).eq('id', id);
@@ -619,7 +656,7 @@ export async function updateTeam(id: number, name: string) {
     return { success: true, message: '班を更新しました。'};
 }
 
-export async function deleteTeam(id: number) {
+export async function deleteTeam(id: string) {
     await requireAdmin();
     const supabase = await createSupabaseAdminClient();
     const { count } = await supabase.schema('member').from('member_team_relations').select('*', { count: 'exact' }).eq('team_id', id);
@@ -690,27 +727,42 @@ export async function forceToggleAttendance(userId: string) {
     await requireAdmin();
     const supabase = await createSupabaseAdminClient();
 
-    const { data: attendanceUser, error: attUserError } = await supabase
+    // user_cards から最初の有効カードを取得（なければ admin_force を使用）
+    const { data: userCard } = await supabase
+        .schema('attendance')
+        .from('user_cards')
+        .select('card_id')
+        .eq('supabase_auth_user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+    const cardIdForRecord = userCard?.card_id ?? 'admin_force';
+
+    // attendance.users 行がなければ作成（attendances の FK 制約を満たすため）
+    const { data: existingAttUser } = await supabase
         .schema('attendance')
         .from('users')
-        .select('supabase_auth_user_id, card_id')
+        .select('supabase_auth_user_id')
         .eq('supabase_auth_user_id', userId)
-        .single();
-    
-    if (attUserError || !attendanceUser) {
-        return { success: false, message: '勤怠ユーザーが見つかりません。' };
+        .maybeSingle();
+
+    if (!existingAttUser) {
+        await supabase
+            .schema('attendance')
+            .from('users')
+            .insert({ supabase_auth_user_id: userId, card_id: `TEMP_${userId}` });
     }
 
     const { data: lastAttendance, error: lastAttendanceError } = await supabase
         .schema('attendance')
         .from('attendances')
         .select('type')
-        .eq('user_id', attendanceUser.supabase_auth_user_id)
+        .eq('user_id', userId)
         .order('timestamp', { ascending: false })
         .limit(1)
         .maybeSingle();
     
-    if(lastAttendanceError && lastAttendanceError.code !== 'PGRST116') { // Not an error if no rows found
+    if (lastAttendanceError && lastAttendanceError.code !== 'PGRST116') {
         return { success: false, message: lastAttendanceError.message };
     }
 
@@ -718,8 +770,8 @@ export async function forceToggleAttendance(userId: string) {
     const now = new Date();
     const dateInJST = formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
 
-    const { error: insertError } = await supabase.schema('attendance').from('attendances').insert({ user_id: attendanceUser.supabase_auth_user_id, type: newType, card_id: attendanceUser.card_id, timestamp: now.toISOString(), date: dateInJST });
-    if(insertError) {
+    const { error: insertError } = await supabase.schema('attendance').from('attendances').insert({ user_id: userId, type: newType, card_id: cardIdForRecord, timestamp: now.toISOString(), date: dateInJST });
+    if (insertError) {
         return { success: false, message: insertError.message };
     }
 
@@ -970,7 +1022,7 @@ export async function getOverallStats(days: number = 30) {
 
     const [members, usersWithCardResult, distinctDatesResult, allAttendancesResult] = await Promise.all([
       getMembers(),
-      supabase.schema('attendance').from('users').select('supabase_auth_user_id').not('card_id', 'is', null).neq('card_id', ''),
+      supabase.schema('attendance').from('user_cards').select('supabase_auth_user_id'),
       supabase.schema('attendance').from('attendances').select('date').gte('date', startDate),
       supabase.schema('attendance').from('attendances').select('user_id, type, timestamp').gte('date', startDate).order('user_id').order('timestamp', { ascending: true }),
     ]);
@@ -1041,7 +1093,7 @@ export async function getDailyAttendanceDetails(date: string) {
     await requireServerAuth();
     const supabase = await createSupabaseAdminClient();
 
-    const { data: attendanceData, error: attendanceError } = await supabase
+    const { data: attendanceData, error: attendanceError } = await (supabase as any)
         .rpc('get_daily_attendance_details', { for_date: date });
 
 
@@ -1055,7 +1107,7 @@ export async function getDailyAttendanceDetails(date: string) {
     const byTeamAndGrade: Record<string, Record<string, number>> = {};
     let total = 0;
 
-    attendanceData?.forEach(row => {
+    attendanceData?.forEach((row: any) => {
         const teamName = row.team_name || '未所属';
         const grade = row.generation ? `${row.generation}期` : '不明';
         const count = row.user_count;
@@ -1078,57 +1130,71 @@ export async function getDailyAttendanceDetails(date: string) {
 }
 
 
-export async function updateUserCardId(userId: string, newCardId: string) {
+export async function addUserCard(userId: string, cardId: string): Promise<{ success: boolean; message: string }> {
     await requireAdmin();
     const supabase = await createSupabaseAdminClient();
-    
-    const normalizedCardId = newCardId.replace(/:/g, '').toLowerCase();
-    
-    // 同じカードIDが既に別のユーザーに登録されていないか確認
-    const { data: existingCard } = await supabase
+    const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+
+    // 他ユーザーとの重複チェック
+    const { data: existing } = await supabase
         .schema('attendance')
-        .from('users')
+        .from('user_cards')
         .select('supabase_auth_user_id')
         .eq('card_id', normalizedCardId)
         .single();
-    
-    if (existingCard && existingCard.supabase_auth_user_id !== userId) {
-        return { success: false, message: 'このカードIDは既に別のユーザーに登録されています。' };
+
+    if (existing) {
+        return { success: false, message: 'このカードIDは既に使用されています。' };
     }
-    
-    // ユーザーがattendance.usersテーブルに存在するか確認
+
+    // attendance.users 行がなければ作成（トリガーが user_cards に自動同期）
     const { data: existingUser } = await supabase
         .schema('attendance')
         .from('users')
         .select('supabase_auth_user_id')
         .eq('supabase_auth_user_id', userId)
         .single();
-    
-    let error;
-    if (existingUser) {
-        // 既存ユーザーの場合はupdate
-        const result = await supabase
-            .schema('attendance')
-            .from('users')
-            .update({ card_id: normalizedCardId })
-            .eq('supabase_auth_user_id', userId);
-        error = result.error;
-    } else {
-        // 新規ユーザーの場合はinsert
-        const result = await supabase
+
+    if (!existingUser) {
+        const { error } = await supabase
             .schema('attendance')
             .from('users')
             .insert({ supabase_auth_user_id: userId, card_id: normalizedCardId });
-        error = result.error;
+        if (error) {
+            return { success: false, message: `カードの追加に失敗しました: ${error.message}` };
+        }
+    } else {
+        const { error } = await supabase
+            .schema('attendance')
+            .from('user_cards')
+            .insert({ supabase_auth_user_id: userId, card_id: normalizedCardId });
+        if (error) {
+            return { success: false, message: `カードの追加に失敗しました: ${error.message}` };
+        }
     }
-    
-    if (error) {
-        console.error('Card ID update error:', error);
-        return { success: false, message: `カードIDの更新に失敗しました: ${error.message}` };
-    }
-    
+
     revalidatePath('/admin');
-    return { success: true, message: 'カードIDを更新しました。' };
+    return { success: true, message: 'カードを追加しました。' };
+}
+
+export async function removeUserCard(userId: string, cardId: string): Promise<{ success: boolean; message: string }> {
+    await requireAdmin();
+    const supabase = await createSupabaseAdminClient();
+    const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+
+    const { error } = await supabase
+        .schema('attendance')
+        .from('user_cards')
+        .delete()
+        .eq('supabase_auth_user_id', userId)
+        .eq('card_id', normalizedCardId);
+
+    if (error) {
+        return { success: false, message: `カードの削除に失敗しました: ${error.message}` };
+    }
+
+    revalidatePath('/admin');
+    return { success: true, message: 'カードを削除しました。' };
 }
 
 
