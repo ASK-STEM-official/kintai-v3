@@ -199,6 +199,100 @@ async function createTempRegistrationInternal(cardId: string, traceId: string): 
   return { success: true, token, message: "QRコードを生成しました。" };
 }
 
+// --- 顔登録（face registration） ---
+// 配線仕様は kintai-v3/doc/face-auth-protocol.md を参照。
+// QR経路: createFaceRegSession でトークン発行 → /register-face/[token] で本人確認 →
+//   face_reg_sessions に user_id を紐付け → kiosk が検知して Python に登録指示。
+// カード経路: resolveUserByCard で即 user_id 解決。
+
+/**
+ * 顔登録用のQRセッションを発行する（カード未所持者向けのQR経路）。
+ * createTempRegistration と同じ admin client パターン。kioskから呼ぶ（認証不要）。
+ */
+export async function createFaceRegSession(): Promise<{ success: boolean; token?: string; message: string }> {
+  const supabase = await createSupabaseAdminClient();
+  const token = `facereg_${randomUUID()}`;
+  const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+  // face_reg_sessions は生成型に未登録のため schema 結果をキャストして利用
+  const { error } = await (supabase.schema('attendance') as any)
+    .from('face_reg_sessions')
+    .insert({ qr_token: token, status: 'pending', expires_at });
+
+  if (error) {
+    console.error('createFaceRegSession error:', error);
+    return { success: false, message: '顔登録セッションの作成に失敗しました。' };
+  }
+  return { success: true, token, message: 'ok' };
+}
+
+/**
+ * カードIDから user_id と表示名を解決する（顔登録のカード経路）。
+ * createTempRegistrationInternal のカード照会を踏襲。未登録カードはエラー。
+ */
+export async function resolveUserByCard(cardId: string): Promise<{ success: boolean; userId?: string; displayName?: string; message: string }> {
+  const supabase = await createSupabaseAdminClient();
+  const normalizedCardId = cardId.replace(/:/g, '').toLowerCase();
+
+  const { data: card, error } = await supabase
+    .schema('attendance')
+    .from('user_cards')
+    .select('supabase_auth_user_id')
+    .eq('card_id', normalizedCardId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('resolveUserByCard error:', error);
+    return { success: false, message: 'カード照会中にエラーが発生しました。' };
+  }
+  if (!card) {
+    return { success: false, message: 'このカードは未登録です。先にカード登録をしてください。' };
+  }
+
+  const userId = card.supabase_auth_user_id;
+  const { data: member } = await supabase
+    .schema('member')
+    .from('members')
+    .select('discord_username')
+    .eq('supabase_auth_user_id', userId)
+    .maybeSingle();
+
+  return {
+    success: true,
+    userId,
+    displayName: member?.discord_username || '名無しさん',
+    message: 'ok',
+  };
+}
+
+/**
+ * 顔登録セッションの状態を取得（kioskがQR経路でポーリング）。
+ * face_reg_sessions は service_role のみアクセス可のためサーバアクション経由で読む。
+ */
+export async function getFaceRegSession(token: string): Promise<{ status: string | null; userId: string | null }> {
+  const supabase = await createSupabaseAdminClient();
+  const { data } = await (supabase.schema('attendance') as any)
+    .from('face_reg_sessions')
+    .select('status, user_id, expires_at')
+    .eq('qr_token', token)
+    .maybeSingle();
+
+  if (!data) return { status: null, userId: null };
+  if (new Date(data.expires_at) <= new Date()) return { status: 'expired', userId: null };
+  return { status: data.status, userId: data.user_id };
+}
+
+/**
+ * 顔登録セッションを完了状態にする（キャプチャ完了後にkioskから呼ぶ）。
+ */
+export async function markFaceRegSessionDone(token: string): Promise<void> {
+  const supabase = await createSupabaseAdminClient();
+  await (supabase.schema('attendance') as any)
+    .from('face_reg_sessions')
+    .update({ status: 'done' })
+    .eq('qr_token', token);
+}
+
 export async function getNickname(discordId: string): Promise<string | null> {
   await requireServerAuth();
   const { data } = await fetchMemberNickname(discordId);

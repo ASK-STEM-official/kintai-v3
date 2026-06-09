@@ -3,15 +3,15 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { createTempRegistration } from '@/app/actions';
+import { createTempRegistration, createFaceRegSession, resolveUserByCard, getFaceRegSession, markFaceRegSessionDone } from '@/app/actions';
 import Clock from '@/components/kiosk/Clock';
-import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer } from 'lucide-react';
+import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer, ScanFace } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import FaceAuth, { type FaceAuthResult } from '@/components/kiosk/FaceAuth';
+import FaceAuth, { type FaceAuthResult, type FaceAuthHandle } from '@/components/kiosk/FaceAuth';
 
-type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
+type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading' | 'face-register' | 'face-capturing';
 type AttendanceType = 'in' | 'out' | null;
 
 interface WbgtData {
@@ -245,6 +245,44 @@ const ProcessingScreen = memo(({ state }: { state: 'loading' | 'processing' }) =
 ));
 ProcessingScreen.displayName = 'ProcessingScreen';
 
+// 顔登録モード: カードタッチ or QRで本人確認を待つ画面
+const FaceRegisterScreen = memo(({ faceRegToken, inputValue }: { faceRegToken: string | null; inputValue: string }) => {
+  const url = faceRegToken ? `${process.env.NEXT_PUBLIC_APP_URL}/register-face/${faceRegToken}` : null;
+  return (
+    <div className="flex flex-col items-center justify-center text-center gap-6 p-6">
+      <ScanFace className="w-24 h-24 text-green-400" />
+      <div>
+        <p className="text-4xl font-bold">顔登録</p>
+        <p className="text-xl text-gray-300 mt-3">本人確認の方法を選んでください</p>
+      </div>
+      <div className="flex items-center gap-10 mt-2">
+        <div className="flex flex-col items-center gap-2">
+          <UserPlus className="w-10 h-10 text-gray-300" />
+          <p className="text-lg">登録済みカードをタッチ</p>
+          {inputValue && (
+            <p className="text-base font-mono bg-gray-800 px-3 py-1 rounded">{inputValue}</p>
+          )}
+        </div>
+        <div className="text-gray-500 text-2xl">または</div>
+        <div className="flex flex-col items-center gap-2">
+          {url ? (
+            <div className="bg-white p-3 rounded-lg">
+              <QRCode value={url} size={140} />
+            </div>
+          ) : (
+            <div className="w-[164px] h-[164px] bg-gray-800 rounded-lg flex items-center justify-center">
+              <p className="text-gray-500 text-sm">QR生成中...</p>
+            </div>
+          )}
+          <p className="text-lg">スマホでQR → ログイン</p>
+        </div>
+      </div>
+      <p className="text-sm text-gray-500 mt-4">キャンセルするにはEscキー</p>
+    </div>
+  );
+});
+FaceRegisterScreen.displayName = 'FaceRegisterScreen';
+
 // --- Main Page Component ---
 
 export default function KioskPage() {
@@ -257,14 +295,18 @@ export default function KioskPage() {
   const [attendanceType, setAttendanceType] = useState<AttendanceType>(null);
   const [wbgtData, setWbgtData] = useState<WbgtData>({ wbgt: null, timestamp: null });
   const [checkinToken, setCheckinToken] = useState<string | null>(null);
+  const [faceRegToken, setFaceRegToken] = useState<string | null>(null);
 
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const faceAuthRef = useRef<FaceAuthHandle>(null);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   // 顔認証の結果ハンドラから現在の状態を参照するための ref（古いクロージャ回避）
   const kioskStateRef = useRef<KioskState>(kioskState);
   useEffect(() => { kioskStateRef.current = kioskState; }, [kioskState]);
+  const faceRegTokenRef = useRef<string | null>(null);
+  useEffect(() => { faceRegTokenRef.current = faceRegToken; }, [faceRegToken]);
 
   useEffect(() => {
     setKioskState('idle');
@@ -276,7 +318,7 @@ export default function KioskPage() {
     if (kioskStateRef.current !== 'idle') return;
 
     if (result.success && result.user) {
-      setAttendanceType(result.type);
+      setAttendanceType(result.type ?? null);
       setMessage(result.user.display_name || '名無しさん');
       setSubMessage(result.message);
       setKioskState('success');
@@ -286,6 +328,59 @@ export default function KioskPage() {
       setKioskState('error');
     }
   }, []);
+
+  // 顔登録: 本人確認できた user_id でキャプチャ開始を Python に指示
+  const beginFaceCapture = useCallback((userId: string, displayName?: string) => {
+    const ok = faceAuthRef.current?.startRegister(userId);
+    if (!ok) {
+      setMessage('カメラに接続できていません');
+      setSubMessage('しばらく待ってから、もう一度お試しください');
+      setKioskState('error');
+      return;
+    }
+    setInputValue('');
+    setMessage(displayName ? `${displayName} さん` : '');
+    setSubMessage('カメラを見てください（登録中…）');
+    setKioskState('face-capturing');
+
+    // Python から完了通知が来ない場合のタイムアウト
+    if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+    processingTimerRef.current = setTimeout(() => {
+      setMessage('顔の登録がタイムアウトしました');
+      setSubMessage('カメラに顔が写っているか確認して、もう一度お試しください');
+      setKioskState('error');
+    }, PROCESSING_TIMEOUT);
+  }, []);
+
+  // Python からの顔登録完了
+  const handleRegisterDone = useCallback((result: FaceAuthResult) => {
+    if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+    const token = faceRegTokenRef.current;
+    if (token) markFaceRegSessionDone(token).catch(() => {});
+    setFaceRegToken(null);
+    if (result.success) {
+      setAttendanceType('in');
+      setMessage('顔を登録しました');
+      setSubMessage(`${result.count ?? 0}枚のデータを保存しました`);
+      setKioskState('success');
+    } else {
+      setMessage('顔の登録に失敗しました');
+      setSubMessage(result.message || 'もう一度お試しください');
+      setKioskState('error');
+    }
+  }, []);
+
+  // カード経路: 登録モード中にタッチされたカードから user_id を解決してキャプチャ開始
+  const handleFaceRegCard = useCallback(async (cardId: string) => {
+    const res = await resolveUserByCard(cardId);
+    if (res.success && res.userId) {
+      beginFaceCapture(res.userId, res.displayName);
+    } else {
+      setMessage('カードを確認できません');
+      setSubMessage(res.message);
+      setKioskState('error');
+    }
+  }, [beginFaceCapture]);
 
   // QRコード用トークンを30秒ごとに更新
   const refreshCheckinToken = useCallback(async () => {
@@ -321,8 +416,37 @@ export default function KioskPage() {
     setMessage('');
     setSubMessage('');
     setQrToken(null);
+    setFaceRegToken(null);
     setAttendanceType(null);
   }, []);
+
+  // 顔登録モードに入る（QR経路用セッションを発行）
+  const enterFaceRegister = useCallback(async () => {
+    setKioskState('face-register');
+    setInputValue('');
+    setMessage('');
+    setSubMessage('');
+    setFaceRegToken(null);
+    const r = await createFaceRegSession();
+    if (r.success && r.token) setFaceRegToken(r.token);
+  }, []);
+
+  // 顔登録モード(QR経路): セッションが本人確認済みになったらキャプチャ開始
+  useEffect(() => {
+    if (kioskState !== 'face-register' || !faceRegToken) return;
+    const poll = setInterval(async () => {
+      const { status, userId } = await getFaceRegSession(faceRegToken);
+      if (status === 'identified' && userId) {
+        clearInterval(poll);
+        beginFaceCapture(userId);
+      } else if (status === 'expired') {
+        clearInterval(poll);
+        const r = await createFaceRegSession();
+        if (r.success && r.token) setFaceRegToken(r.token);
+      }
+    }, 2000);
+    return () => clearInterval(poll);
+  }, [kioskState, faceRegToken, beginFaceCapture]);
 
   const handleFormSubmit = useCallback(async (submissionType: 'idle' | 'register', cardId: string) => {
     if (!cardId.trim()) {
@@ -399,24 +523,35 @@ export default function KioskPage() {
         return;
       }
 
-      if (kioskState === 'processing') {
+      if (kioskState === 'processing' || kioskState === 'face-capturing') {
         return;
       }
-      
+
       if (e.key === 'Enter') {
+        if (kioskState === 'face-register') {
+          if (inputValue.trim()) handleFaceRegCard(inputValue);
+          return;
+        }
         const submissionType = kioskState === 'register' ? 'register' : 'idle';
         if (inputValue.trim()) {
             handleFormSubmit(submissionType, inputValue);
         }
         return;
       }
-      
+
       if (e.key === '/') {
         e.preventDefault();
         setKioskState('register');
         setMessage('新規カード登録');
         setSubMessage('登録したいカードをタッチしてください');
         setInputValue('');
+        return;
+      }
+
+      // 顔登録モード起動
+      if (e.key === ';' && kioskState !== 'face-register') {
+        e.preventDefault();
+        enterFaceRegister();
         return;
       }
       
@@ -434,7 +569,7 @@ export default function KioskPage() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [kioskState, inputValue, handleFormSubmit, resetToIdle]);
+  }, [kioskState, inputValue, handleFormSubmit, resetToIdle, handleFaceRegCard, enterFaceRegister]);
   
   useEffect(() => {
     const fetchWbgt = async () => {
@@ -502,6 +637,14 @@ export default function KioskPage() {
           {kioskState === 'error' && <ErrorScreen message={message} subMessage={subMessage} />}
           {kioskState === 'register' && <RegisterScreen message={message} subMessage={subMessage} />}
           {kioskState === 'qr' && qrToken && <QrScreen qrToken={qrToken} qrExpiry={qrExpiry} onExpire={resetToIdle} />}
+          {kioskState === 'face-register' && <FaceRegisterScreen faceRegToken={faceRegToken} inputValue={inputValue} />}
+          {kioskState === 'face-capturing' && (
+            <div className="text-center flex flex-col items-center">
+              <ScanFace className="w-32 h-32 text-green-400 mb-8 animate-pulse" />
+              <p className="text-4xl font-bold">{message || '顔を登録中…'}</p>
+              <p className="text-2xl text-gray-300 mt-4">{subMessage}</p>
+            </div>
+          )}
           {(kioskState === 'loading' || kioskState === 'processing') && <ProcessingScreen state={kioskState} />}
         </div>
         
@@ -515,10 +658,23 @@ export default function KioskPage() {
         )}
       </div>
 
-      {/* 顔認証カメラ。常時マウントしてWebRTC接続を維持する（状態遷移で再接続させない）。 */}
-      <div className="fixed bottom-4 right-4 z-20">
-        <FaceAuth onResult={handleFaceResult} />
-      </div>
+      {/* 顔認証カメラ。常時マウントしてWebRTC接続を維持する（状態遷移で再接続させない）。
+          顔登録/キャプチャ中は中央に大きく表示して位置合わせしやすくする。 */}
+      {(() => {
+        const prominent = kioskState === 'face-register' || kioskState === 'face-capturing';
+        return (
+          <div className={prominent
+            ? 'fixed inset-0 z-20 flex items-end justify-center pb-10 pointer-events-none'
+            : 'fixed bottom-4 right-4 z-20'}>
+            <FaceAuth
+              ref={faceAuthRef}
+              onResult={handleFaceResult}
+              onRegisterDone={handleRegisterDone}
+              prominent={prominent}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }

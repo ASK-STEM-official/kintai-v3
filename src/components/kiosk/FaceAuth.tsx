@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 
-// Pythonから DataChannel "result" で届く打刻結果。
-// kiosk の recordAttendanceDirect の戻り型と同形にしてある。
+// Pythonから DataChannel "result" で届くメッセージ。配線仕様は doc/face-auth-protocol.md。
+// - 打刻結果(event 無し): success/message/user/type
+// - 登録完了(event:"register_done"): success/count/message
 export interface FaceAuthResult {
+  event?: 'register_done';
   success: boolean;
   message: string;
-  user: { display_name: string | null } | null;
-  type: 'in' | 'out' | null;
+  user?: { display_name: string | null } | null;
+  type?: 'in' | 'out' | null;
+  count?: number;
+}
+
+// kiosk(親)から呼ぶ命令インターフェース
+export interface FaceAuthHandle {
+  /** 顔登録を開始する制御メッセージ(control)をPythonへ送る。成功可否を返す。 */
+  startRegister: (userId: string, count?: number) => boolean;
 }
 
 type ConnState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'no-camera';
@@ -16,39 +25,64 @@ type ConnState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' 
 interface FaceAuthProps {
   /** signaling先。既定は env NEXT_PUBLIC_FACE_AUTH_URL */
   signalingUrl?: string;
-  /** 打刻結果を受け取るコールバック（親が kioskState を見て表示を判断する） */
+  /** 打刻結果(event 無し)を受け取る。親が kioskState を見て表示を判断する。 */
   onResult: (result: FaceAuthResult) => void;
+  /** 顔登録完了(event:"register_done")を受け取る。 */
+  onRegisterDone?: (result: FaceAuthResult) => void;
+  /** true で大きく表示（顔登録モード中の位置合わせ用）。 */
+  prominent?: boolean;
 }
 
 const RECONNECT_DELAY = 5000;
+const DEFAULT_REGISTER_COUNT = 5;
 
 /**
  * ブラウザのカメラを取得し、ローカルPython(aiortc)へWebRTCで送出する。
  * Pythonが顔照合→打刻し、結果を DataChannel "result" で返す。
- * このコンポーネントは「カメラ送出」と「プレビュー表示」「結果の転送」だけを担い、
- * 打刻ロジックは持たない（Python側が record_attendance_by_user_id を直叩きする）。
+ * 顔登録時は親から startRegister() を呼び、"control" チャンネルで Python に登録を指示する。
+ * 打刻/登録のロジックは Python 側（doc/face-auth-protocol.md 参照）。
  */
-export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
+function FaceAuthInner(
+  { signalingUrl, onResult, onRegisterDone, prominent = false }: FaceAuthProps,
+  ref: React.Ref<FaceAuthHandle>,
+) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const controlChannelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedRef = useRef(false);
   const [connState, setConnState] = useState<ConnState>('idle');
 
-  // onResult は再生成されうるので ref で最新を参照する（DataChannel onmessage が古い参照を掴まないように）
+  // コールバックは再生成されうるので ref で最新を参照する
   const onResultRef = useRef(onResult);
+  const onRegisterDoneRef = useRef(onRegisterDone);
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
+  useEffect(() => { onRegisterDoneRef.current = onRegisterDone; }, [onRegisterDone]);
 
   const url = signalingUrl
     || process.env.NEXT_PUBLIC_FACE_AUTH_URL
     || 'https://localhost:8000';
+
+  // 親へ公開する命令: 顔登録開始
+  useImperativeHandle(ref, () => ({
+    startRegister: (userId: string, count = DEFAULT_REGISTER_COUNT) => {
+      const ch = controlChannelRef.current;
+      if (!ch || ch.readyState !== 'open') {
+        console.warn('[FaceAuth] control channel not open');
+        return false;
+      }
+      ch.send(JSON.stringify({ action: 'register_start', user_id: userId, count }));
+      return true;
+    },
+  }), []);
 
   const cleanupPc = useCallback(() => {
     if (pcRef.current) {
       try { pcRef.current.close(); } catch { /* noop */ }
       pcRef.current = null;
     }
+    controlChannelRef.current = null;
   }, []);
 
   const connect = useCallback(async () => {
@@ -57,7 +91,6 @@ export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
     setConnState('connecting');
 
     try {
-      // カメラはコンポーネント存続中つけっぱなし。stream は使い回す。
       if (!streamRef.current) {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         if (videoRef.current) {
@@ -73,16 +106,23 @@ export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
     const pc = new RTCPeerConnection();
     pcRef.current = pc;
 
-    // 受信用 DataChannel "result"
-    const channel = pc.createDataChannel('result');
-    channel.onmessage = (e) => {
+    // 結果受信用 "result"（Python→ブラウザ）
+    const resultChannel = pc.createDataChannel('result');
+    resultChannel.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data) as FaceAuthResult;
-        onResultRef.current(data);
+        if (data.event === 'register_done') {
+          onRegisterDoneRef.current?.(data);
+        } else {
+          onResultRef.current(data);
+        }
       } catch (err) {
         console.error('[FaceAuth] invalid result payload:', err);
       }
     };
+
+    // 制御送信用 "control"（ブラウザ→Python）
+    controlChannelRef.current = pc.createDataChannel('control');
 
     // カメラ track を送出
     streamRef.current.getVideoTracks().forEach((track) => {
@@ -134,7 +174,6 @@ export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
       closedRef.current = true;
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
       cleanupPc();
-      // カメラ解放（LED消灯）
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -161,9 +200,11 @@ export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
     'no-camera': 'bg-red-500',
   };
 
+  const sizeClass = prominent ? 'w-[28rem] h-[21rem]' : 'w-40 h-30';
+
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="relative w-40 h-30 rounded-lg overflow-hidden border-2 border-gray-700 bg-black">
+    <div className="flex flex-col items-center gap-1">
+      <div className={`relative ${sizeClass} rounded-lg overflow-hidden border-2 ${prominent ? 'border-green-500' : 'border-gray-700'} bg-black transition-all`}>
         <video
           ref={videoRef}
           autoPlay
@@ -179,3 +220,7 @@ export default function FaceAuth({ signalingUrl, onResult }: FaceAuthProps) {
     </div>
   );
 }
+
+const FaceAuth = forwardRef<FaceAuthHandle, FaceAuthProps>(FaceAuthInner);
+FaceAuth.displayName = 'FaceAuth';
+export default FaceAuth;

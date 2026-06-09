@@ -1,7 +1,11 @@
 # 顔認証 連携仕様（Python側＝後輩向け）
 
 Web（kioskブラウザ）側が前提とする取り決め。Python（aiortcサーバ）はこの契約に合わせて実装すること。
-Web側は `kintai-v3/src/components/kiosk/FaceAuth.tsx`（予定）でこの仕様に沿って接続する。
+Web側は `kintai-v3/src/components/kiosk/FaceAuth.tsx` でこの仕様に沿って接続する。
+
+> **配線（signaling・DataChannelメッセージ・状態遷移）の正典は `face-auth-protocol.md`。**
+> このファイルは Python 実装の手引き（依存・テーブル構造・コード例・証明書）であり、
+> 仕様が食い違った場合は protocol.md を正とする。顔登録の `control`/`register_done` も protocol.md を参照。
 
 > このドキュメントだけで Python 側の設計・実装に着手できるよう、接続情報（`.env` の秘密値）を除く必要情報を全て記載している。
 > 秘密値（`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `API_KEY`）は `face_auth/.env` に設定済み。リポジトリと一緒に受け取ること。
