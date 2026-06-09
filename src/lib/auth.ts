@@ -134,11 +134,15 @@ export async function requireAdmin(): Promise<AuthUser> {
   if (user.isOAuth) {
     const { getMe } = await import('@/lib/stem-api');
     const me = await getMe();
-    if (!me?.is_admin) throw new Error('管理者権限が必要です。');
-    return user;
+    if (me !== null) {
+      // stem-system から取得できた場合はその値を信頼
+      if (!me.is_admin) throw new Error('管理者権限が必要です。');
+      return user;
+    }
+    // stem-system が応答しない場合は DB にフォールバック
   }
 
-  // Supabase セッション fallback
+  // DB で is_admin を確認（Supabase セッション or stem-api フォールバック）
   const supabase = await createSupabaseAdminClient();
   const { data: profile } = await supabase
     .schema('member')
