@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 
-const STEM_URL = process.env.NEXT_PUBLIC_STEM_SYSTEM_URL;
+const STEM_URL = process.env.NEXT_PUBLIC_STEM_SYSTEM_URL ?? process.env.NEXT_PUBLIC_STEM_OAUTH_BASE_URL;
 
 export type StemMember = {
   id: string;
@@ -48,7 +48,7 @@ export async function getMe(): Promise<StemMember | null> {
 
 export async function getMembers(): Promise<StemMember[]> {
   if (!STEM_URL) {
-    console.error('[stem-api] NEXT_PUBLIC_STEM_SYSTEM_URL is not set');
+    console.error('[stem-api] NEXT_PUBLIC_STEM_SYSTEM_URL / NEXT_PUBLIC_STEM_OAUTH_BASE_URL is not set');
     return [];
   }
   try {
