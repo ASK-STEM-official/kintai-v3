@@ -53,7 +53,13 @@ export default function AttendanceCalendar({ userId }: { userId: string }) {
       }
 
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const records = await getAttendanceDayRecords(userId, dateStr);
+      let records: { type: string; timestamp: string }[];
+      try {
+        records = await getAttendanceDayRecords(userId, dateStr);
+      } catch {
+        setAttendanceDetails(null);
+        return;
+      }
 
       if (!records || records.length === 0) {
         setAttendanceDetails(null);

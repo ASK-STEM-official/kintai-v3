@@ -372,7 +372,7 @@ export async function signOut() {
 }
 
 export async function getMonthlyAttendance(userId: string, month: Date) {
-  await requireServerAuth();
+  try { await requireServerAuth(); } catch { return []; }
   const supabase = await createSupabaseAdminClient();
   const zonedMonth = toZonedTime(month, timeZone);
   const start = startOfMonth(zonedMonth);
@@ -411,7 +411,7 @@ export async function getMonthlyAttendance(userId: string, month: Date) {
 }
 
 export async function getAttendanceDayRecords(userId: string, date: string): Promise<{ type: string; timestamp: string }[]> {
-  await requireServerAuth();
+  try { await requireServerAuth(); } catch { return []; }
   const supabase = await createSupabaseAdminClient();
   const { data, error } = await supabase
     .schema('attendance')
@@ -425,7 +425,7 @@ export async function getAttendanceDayRecords(userId: string, date: string): Pro
 }
 
 export async function getMonthlyAttendanceSummary(month: Date) {
-  await requireServerAuth();
+  try { await requireServerAuth(); } catch { return {}; }
   const supabase = await createSupabaseAdminClient();
   const start = formatDate(startOfMonth(month), 'yyyy-MM-dd');
   const end = formatDate(endOfMonth(month), 'yyyy-MM-dd');
@@ -471,7 +471,7 @@ export async function getMonthlyAttendanceSummary(month: Date) {
 
 
 export async function calculateTotalActivityTime(userId: string, days: number): Promise<number> {
-  await requireServerAuth();
+  try { await requireServerAuth(); } catch { return 0; }
   const supabase = await createSupabaseAdminClient();
   const startDate = subDays(new Date(), days).toISOString();
 
@@ -1013,7 +1013,9 @@ export async function updateAllUserDisplayNames(): Promise<{ success: boolean, m
 }
 
 export async function getOverallStats(days: number = 30) {
-    await requireServerAuth();
+    try { await requireServerAuth(); } catch {
+        return { todayActiveUsers: 0, totalMembers: 0, activeDaysCount: 0, totalActivityHours: 0 };
+    }
     const supabase = await createSupabaseAdminClient();
     const { getMembers } = await import('@/lib/stem-api');
     const today = toZonedTime(new Date(), timeZone);
@@ -1063,7 +1065,7 @@ export async function getOverallStats(days: number = 30) {
 }
 
 export async function getDailyAttendanceCounts(year: number, month: number) {
-    await requireServerAuth();
+    try { await requireServerAuth(); } catch { return {}; }
     const supabase = await createSupabaseAdminClient();
     const start = startOfMonth(new Date(year, month - 1));
     const end = endOfMonth(new Date(year, month - 1));
@@ -1090,7 +1092,7 @@ export async function getDailyAttendanceCounts(year: number, month: number) {
 }
 
 export async function getDailyAttendanceDetails(date: string) {
-    await requireServerAuth();
+    try { await requireServerAuth(); } catch { return { byTeam: {}, byGrade: {}, byTeamAndGrade: {}, total: 0 }; }
     const supabase = await createSupabaseAdminClient();
 
     const { data: attendanceData, error: attendanceError } = await (supabase as any)
