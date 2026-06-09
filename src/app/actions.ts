@@ -509,12 +509,10 @@ export async function getAllUsersWithStatus() {
     const supabase = await createSupabaseAdminClient();
     const { getMembers } = await import('@/lib/stem-api');
 
-    const [members, userCardsResult] = await Promise.all([
+    const [apiMembers, userCardsResult] = await Promise.all([
       getMembers(),
       supabase.schema('attendance').from('user_cards').select('supabase_auth_user_id, card_id'),
     ]);
-
-    if (!members.length) return { data: [], error: new Error('stem-system API からメンバー一覧を取得できませんでした。Vercel ログを確認してください。') };
 
     const cardMap = new Map<string, string[]>();
     userCardsResult.data?.forEach(uc => {
@@ -522,7 +520,58 @@ export async function getAllUsersWithStatus() {
       arr.push(uc.card_id);
       cardMap.set(uc.supabase_auth_user_id, arr);
     });
-    const memberIds = members.map(m => m.id);
+
+    // stem-api が使えない場合は member.members を直接参照
+    if (!apiMembers.length) {
+      console.warn('[getAllUsersWithStatus] stem-api unavailable, falling back to DB');
+      const { data: dbMembers, error: dbError } = await supabase
+        .schema('member')
+        .from('members')
+        .select(`
+          supabase_auth_user_id,
+          discord_uid,
+          discord_username,
+          generation,
+          is_admin,
+          student_number,
+          status,
+          deleted_at,
+          member_team_relations(team_id, teams(id, name))
+        `);
+      if (dbError || !dbMembers?.length) {
+        return { data: [], error: dbError ?? new Error('メンバー一覧を取得できませんでした') };
+      }
+      const dbMemberIds = dbMembers.map((m: any) => m.supabase_auth_user_id);
+      const { data: latestAttendances } = await supabase
+        .schema('attendance').from('attendances')
+        .select('user_id, type, timestamp')
+        .in('user_id', dbMemberIds)
+        .order('timestamp', { ascending: false });
+      const latestMap = new Map<string, { type: string; timestamp: string }>();
+      latestAttendances?.forEach(att => { if (!latestMap.has(att.user_id)) latestMap.set(att.user_id, { type: att.type, timestamp: att.timestamp }); });
+      const users = dbMembers.map((member: any) => {
+        const latestAttendance = latestMap.get(member.supabase_auth_user_id);
+        const teamRelation = member.member_team_relations?.[0];
+        return {
+          id: member.supabase_auth_user_id,
+          display_name: member.discord_username || '不明',
+          discord_username: member.discord_username || null,
+          card_ids: cardMap.get(member.supabase_auth_user_id) || [],
+          team_name: teamRelation?.teams?.name || null,
+          team_id: teamRelation?.team_id || null,
+          generation: member.generation,
+          is_admin: member.is_admin,
+          latest_attendance_type: latestAttendance?.type || null,
+          latest_timestamp: latestAttendance?.timestamp || null,
+          deleted_at: member.deleted_at,
+          student_number: member.student_number ?? null,
+          status: member.status ?? 0,
+        };
+      });
+      return { data: users, error: null };
+    }
+
+    const memberIds = apiMembers.map(m => m.id);
 
     const { data: latestAttendances } = await supabase
       .schema('attendance')
@@ -538,7 +587,7 @@ export async function getAllUsersWithStatus() {
       }
     });
 
-    const users = members.map((member) => {
+    const users = apiMembers.map((member) => {
       const latestAttendance = latestAttendanceMap.get(member.id);
       const team = member.teams?.[0];
       return {
@@ -598,9 +647,15 @@ export async function fetchAllUserRealNames(): Promise<{ data: Record<string, st
 
 export async function getAllTeams() {
     await requireServerAuth();
+    const supabase = await createSupabaseAdminClient();
     const { getTeams } = await import('@/lib/stem-api');
-    const teams = await getTeams();
-    return { data: teams.map(t => ({ id: t.id, name: t.name })), error: null };
+    const apiTeams = await getTeams();
+    if (apiTeams.length) {
+      return { data: apiTeams.map(t => ({ id: t.id, name: t.name })), error: null };
+    }
+    // stem-api unavailable: fall back to DB
+    const { data: dbTeams, error } = await supabase.schema('member').from('teams').select('id, name');
+    return { data: dbTeams?.map(t => ({ id: t.id, name: t.name })) ?? [], error };
 }
 
 export async function getTeamsWithMemberStatus() {

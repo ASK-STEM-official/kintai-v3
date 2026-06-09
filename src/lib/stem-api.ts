@@ -47,6 +47,10 @@ export async function getMe(): Promise<StemMember | null> {
 }
 
 export async function getMembers(): Promise<StemMember[]> {
+  if (!STEM_URL) {
+    console.error('[stem-api] NEXT_PUBLIC_STEM_SYSTEM_URL is not set');
+    return [];
+  }
   try {
     const res = await stemFetch('/api/v1/members');
     if (!res.ok) {
