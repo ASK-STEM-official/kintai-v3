@@ -9,6 +9,7 @@ import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer } from 'lucid
 import QRCode from 'react-qr-code';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import FaceAuth, { type FaceAuthResult } from '@/components/kiosk/FaceAuth';
 
 type KioskState = 'idle' | 'input' | 'success' | 'error' | 'register' | 'qr' | 'processing' | 'loading';
 type AttendanceType = 'in' | 'out' | null;
@@ -261,8 +262,29 @@ export default function KioskPage() {
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
+  // 顔認証の結果ハンドラから現在の状態を参照するための ref（古いクロージャ回避）
+  const kioskStateRef = useRef<KioskState>(kioskState);
+  useEffect(() => { kioskStateRef.current = kioskState; }, [kioskState]);
+
   useEffect(() => {
     setKioskState('idle');
+  }, []);
+
+  // 顔認証(Python)からの打刻結果。idle のときだけ反映し、
+  // カードスキャン・QR・登録など進行中のフローには割り込まない。
+  const handleFaceResult = useCallback((result: FaceAuthResult) => {
+    if (kioskStateRef.current !== 'idle') return;
+
+    if (result.success && result.user) {
+      setAttendanceType(result.type);
+      setMessage(result.user.display_name || '名無しさん');
+      setSubMessage(result.message);
+      setKioskState('success');
+    } else {
+      setMessage(result.message);
+      setSubMessage('');
+      setKioskState('error');
+    }
   }, []);
 
   // QRコード用トークンを30秒ごとに更新
@@ -491,6 +513,11 @@ export default function KioskPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* 顔認証カメラ。常時マウントしてWebRTC接続を維持する（状態遷移で再接続させない）。 */}
+      <div className="fixed bottom-4 right-4 z-20">
+        <FaceAuth onResult={handleFaceResult} />
       </div>
     </div>
   );
