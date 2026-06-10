@@ -287,6 +287,172 @@ kiosk は Vercel(HTTPS) 配信。HTTPSページから `http://localhost` への�
 
 ---
 
+## 6.5. バックエンド連携リファレンス実装（接合部・ほぼ丸ごと貼れる）
+
+Web側との接合部（signaling・DataChannel・control受信・登録キャプチャ・結果送信）の**動く骨組み**。
+ここが食い違うと壊れるので、**この通りに実装**すること（配線の正典は protocol.md）。
+顔照合の中身（`load_from_supabase` / `match_face` / 閾値）は既存 `main.py` を流用し、`# TODO` を埋めるだけ。
+
+```python
+import asyncio, json, time
+import numpy as np
+import face_recognition
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+# supabase は §0 の通り ClientOptions(schema="attendance") で初期化済みとする
+# user_data, load_from_supabase(), match_face() は既存 main.py を流用
+
+RECOGNITION_THRESHOLD = 0.45
+COOLDOWN_SECONDS = 5
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://<kioskのオリジン>"],  # 例: https://kintai-xxx.vercel.app
+    allow_methods=["*"], allow_headers=["*"],
+)
+pcs = set()
+
+
+class Conn:
+    """1 WebRTC接続ぶんの状態。"""
+    def __init__(self, pc):
+        self.pc = pc
+        self.result_ch = None        # Python→ブラウザ ("result")
+        self.mode = "auth"           # "auth" | "register"
+        self.reg_user_id = None
+        self.reg_count = 5
+        self.reg_collected = 0
+        self.last_input = {}         # uid -> 最終打刻時刻(クールダウン用)
+
+
+def send_result(conn: "Conn", payload: dict):
+    """result チャンネルへ JSON 文字列を送る。"""
+    ch = conn.result_ch
+    if ch is not None and ch.readyState == "open":
+        ch.send(json.dumps(payload))
+
+
+def handle_control(conn: "Conn", message: str):
+    """control チャンネル受信（ブラウザ→Python）。"""
+    try:
+        msg = json.loads(message)
+    except Exception:
+        return
+    if msg.get("action") == "register_start":
+        conn.mode = "register"
+        conn.reg_user_id = msg["user_id"]
+        conn.reg_count = int(msg.get("count", 5))
+        conn.reg_collected = 0
+    elif msg.get("action") == "register_cancel":
+        conn.mode = "auth"
+        conn.reg_user_id = None
+
+
+def do_auth_frame(conn: "Conn", img: np.ndarray):
+    """認証モード: 顔を照合し、一致したら打刻して result(A) を送る。"""
+    locations = face_recognition.face_locations(img, model="hog")
+    for enc in face_recognition.face_encodings(img, locations):
+        uid, dist = match_face(enc)            # TODO: 既存の最近傍照合（uid, 距離）を返す
+        if uid and dist < RECOGNITION_THRESHOLD:
+            now = time.time()
+            if now - conn.last_input.get(uid, 0) > COOLDOWN_SECONDS:
+                conn.last_input[uid] = now
+                res = supabase.rpc("record_attendance_by_user_id",
+                                   {"p_user_id": uid}).execute()
+                send_result(conn, res.data)     # event 無し = 打刻結果(A)
+
+
+def do_register_frame(conn: "Conn", img: np.ndarray):
+    """登録モード: 顔がちょうど1つのフレームだけ採用し、face_encodings に保存。"""
+    locations = face_recognition.face_locations(img, model="hog")
+    if len(locations) != 1:                     # 0人/複数人のフレームは捨てる
+        return
+    enc = face_recognition.face_encodings(img, locations)[0]
+    supabase.table("face_encodings").insert({
+        "user_id": conn.reg_user_id,
+        "encoding": enc.tolist(),
+        "is_adaptive": False,
+    }).execute()
+    conn.reg_collected += 1
+    if conn.reg_collected >= conn.reg_count:
+        send_result(conn, {
+            "event": "register_done", "success": True,
+            "count": conn.reg_collected, "message": "登録しました",
+        })
+        conn.mode = "auth"                      # 認証モードへ復帰
+        conn.reg_user_id = None
+
+
+async def consume_video(conn: "Conn", track):
+    """映像を ~5fps に間引いてモード別に処理。"""
+    n = 0
+    while True:
+        try:
+            frame = await track.recv()
+        except Exception:
+            break
+        n += 1
+        if n % 6 != 0:                          # 30fps想定 → ~5fps
+            continue
+        img = frame.to_ndarray(format="rgb24")  # face_recognition は RGB
+        if conn.mode == "register":
+            do_register_frame(conn, img)
+        else:
+            do_auth_frame(conn, img)
+
+
+@app.post("/offer")
+async def offer(request: Request):
+    params = await request.json()
+    pc = RTCPeerConnection()
+    conn = Conn(pc)
+    pcs.add(pc)
+
+    # DataChannel はブラウザ側が "result" と "control" を作る → ここで受け取る
+    @pc.on("datachannel")
+    def on_datachannel(channel):
+        if channel.label == "result":
+            conn.result_ch = channel
+        elif channel.label == "control":
+            @channel.on("message")
+            def on_message(message):
+                handle_control(conn, message)
+
+    @pc.on("connectionstatechange")
+    async def on_state():
+        if pc.connectionState in ("failed", "closed"):
+            await pc.close()
+            pcs.discard(pc)
+
+    @pc.on("track")
+    def on_track(track):
+        if track.kind == "video":
+            asyncio.ensure_future(consume_video(conn, track))
+
+    await pc.setRemoteDescription(
+        RTCSessionDescription(sdp=params["sdp"], type=params["type"]))
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+    return JSONResponse({"sdp": pc.localDescription.sdp,
+                         "type": pc.localDescription.type})
+```
+
+起動（HTTPS。§5の証明書を使う）:
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8000 \
+  --ssl-keyfile localhost-key.pem --ssl-certfile localhost.pem
+```
+
+補足:
+- 登録が `count` 枚集まる前に顔が外れ続けると、ブラウザ側が15秒でタイムアウト表示する（protocol.md §7）。必要なら一定時間で `register_done success:false` を送ってもよい。
+- `result`/`control` の**チャンネル生成はブラウザ側**。Python は `on("datachannel")` で受け取るだけ（自分で createDataChannel しない）。
+- `supabase.table("face_encodings")` はクライアントが `schema="attendance"` 前提（§0）。
+
+---
+
 ## 7. Web側が前提にすること（まとめ）
 
 - signaling先 = env `NEXT_PUBLIC_FACE_AUTH_URL`（既定 `https://localhost:8000`）。
