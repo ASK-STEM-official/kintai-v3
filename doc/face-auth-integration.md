@@ -287,10 +287,18 @@ kiosk は Vercel(HTTPS) 配信。HTTPSページから `http://localhost` への�
 
 ---
 
-## 6.5. バックエンド連携リファレンス実装（接合部・ほぼ丸ごと貼れる）
+## 6.5. バックエンド連携リファレンス実装（接合部）
 
-Web側との接合部（signaling・DataChannel・control受信・登録キャプチャ・結果送信）の**動く骨組み**。
-ここが食い違うと壊れるので、**この通りに実装**すること（配線の正典は protocol.md）。
+> **【重要・2026-06更新】実装は「登録は専用エンドポイント `/register/offer`」方式に確定した。**
+> 下記コードの「control チャンネルで register_start を受ける」部分は**採用していない**（古い案）。
+> 実際の配線は **protocol.md §4-2 / §5** を正とする:
+> - 認証は `/offer` 接続の `result` に打刻結果を送る（下記 `do_auth_frame` 相当でOK）。
+> - 登録は **`/register/offer`**（body に `user_id`）で別接続を張り、その映像からキャプチャ→
+>   `face_encodings` に insert → `result` に `{status:"capturing"...}` / `{status:"done", message}` を送る。
+> 後輩の `server.py`（`/offer` + `/register/offer` の2エンドポイント構成）がこの確定版の実装。
+> 以下の control 方式コードは歴史的経緯として残すが、**新規実装は protocol.md に従うこと**。
+
+Web側との接合部の骨組み（※登録部分は上記の通り `/register/offer` 方式が正）。
 顔照合の中身（`load_from_supabase` / `match_face` / 閾値）は既存 `main.py` を流用し、`# TODO` を埋めるだけ。
 
 ```python
