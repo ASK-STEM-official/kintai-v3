@@ -101,83 +101,57 @@ const WbgtDisplay = memo(({ wbgt }: { wbgt: number | null }) => {
 WbgtDisplay.displayName = 'WbgtDisplay';
 
 
-const IdleScreen = memo(({ wbgtData, checkinToken }: { wbgtData: WbgtData; checkinToken: string | null }) => {
-  const checkinUrl = checkinToken
-    ? `${process.env.NEXT_PUBLIC_APP_URL}/checkin/${checkinToken}`
-    : null;
+// 打刻結果・処理中・入力中・登録中を画面上部にバナー表示（カメラを隠さない）
+const TopBanner = memo(({ state, message, subMessage, attendanceType, inputValue }: {
+  state: KioskState; message: string; subMessage: string; attendanceType: AttendanceType; inputValue: string;
+}) => {
+  let bg = 'bg-gray-700';
+  let icon: React.ReactNode = null;
+  let title = '';
+  let sub = '';
+
+  if (state === 'success') {
+    bg = attendanceType === 'out' ? 'bg-blue-600' : 'bg-green-600';
+    icon = attendanceType === 'out'
+      ? <LogOut className="w-12 h-12" />
+      : <LogIn className="w-12 h-12" />;
+    title = message;
+    sub = subMessage;
+  } else if (state === 'error') {
+    bg = 'bg-red-600';
+    icon = <XCircle className="w-12 h-12" />;
+    title = message;
+    sub = subMessage;
+  } else if (state === 'processing') {
+    bg = 'bg-gray-700';
+    icon = <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white" />;
+    title = '処理中…';
+  } else if (state === 'input') {
+    bg = 'bg-gray-700';
+    title = '読み取り中…';
+    sub = inputValue;
+  } else if (state === 'face-capturing') {
+    bg = 'bg-green-700';
+    icon = <ScanFace className="w-12 h-12 animate-pulse" />;
+    title = message || '顔を登録中…';
+    sub = subMessage;
+  } else {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col h-full w-full justify-between p-6">
-      <header className="w-full flex justify-between items-start text-xl">
-        <h1 className="font-bold">STEM研究部 勤怠管理システム</h1>
-        <div className="flex flex-col items-end gap-2">
-          <WbgtDisplay wbgt={wbgtData.wbgt} />
-        </div>
-      </header>
-      <div className="flex-grow w-full flex flex-col items-center justify-center overflow-y-auto py-4 gap-6">
-        <Clock />
-        <div className="flex flex-col items-center gap-3">
-          {checkinUrl ? (
-            <div className="bg-white p-3 rounded-lg shadow-md">
-              <QRCode value={checkinUrl} size={160} />
-            </div>
-          ) : (
-            <div className="w-[184px] h-[184px] bg-gray-800 rounded-lg flex items-center justify-center">
-              <p className="text-gray-500 text-sm">QR生成中...</p>
-            </div>
-          )}
-          <p className="text-gray-300 text-lg">カードがない方はQRで出退勤</p>
+    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 animate-in fade-in slide-in-from-top-4">
+      <div className={`flex items-center gap-5 ${bg} text-white px-10 py-5 rounded-2xl shadow-2xl min-w-[420px] max-w-[92vw]`}>
+        {icon}
+        <div className="min-w-0">
+          <p className="text-4xl font-bold truncate">{title}</p>
+          {sub && <p className="text-xl text-white/85 truncate">{sub}</p>}
         </div>
       </div>
-      <footer className="w-full text-center">
-        <p className="text-3xl font-semibold mb-4">NFCタグをタッチしてください</p>
-        <p className="text-gray-400">カードリーダーにタッチするか、IDをキーボードで入力してください</p>
-        <div className="text-gray-500 mt-8">
-          新しいカードを登録するには <span className="font-mono bg-gray-700 text-gray-300 px-2 py-1 rounded">/</span> キー
-        </div>
-        <div className="mt-6 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
-          <p className="text-yellow-300 text-lg">
-            このシステムを知らない、もしくは「カードが未登録」と出た方は部長まで連絡してください
-          </p>
-        </div>
-      </footer>
     </div>
   );
 });
-IdleScreen.displayName = 'IdleScreen';
-
-const SuccessScreen = memo(({ message, subMessage, attendanceType }: { message: string, subMessage: string, attendanceType: AttendanceType }) => (
-  <div className="text-center flex flex-col items-center">
-    {attendanceType === 'in' ? (
-      <LogIn className="w-32 h-32 text-green-400 mb-8" />
-    ) : (
-      <LogOut className="w-32 h-32 text-blue-400 mb-8" />
-    )}
-    <p className="text-5xl font-bold">{message}</p>
-    <p className="text-3xl text-gray-300 mt-4">{subMessage}</p>
-    <p className="text-sm text-gray-500 mt-8">(5秒後に自動的に戻ります)</p>
-  </div>
-));
-SuccessScreen.displayName = 'SuccessScreen';
-
-const ErrorScreen = memo(({ message, subMessage }: { message: string, subMessage: string }) => (
-  <div className="text-center flex flex-col items-center">
-    <XCircle className="w-32 h-32 text-red-400 mb-8" />
-    <p className="text-5xl font-bold">{message}</p>
-    <p className="text-2xl text-gray-400 mt-4">{subMessage}</p>
-    <p className="text-sm text-gray-500 mt-8">(5秒後に自動的に戻ります)</p>
-  </div>
-));
-ErrorScreen.displayName = 'ErrorScreen';
-
-const RegisterScreen = memo(({ message, subMessage }: { message: string, subMessage: string }) => (
-    <div className="text-center flex flex-col items-center">
-        <UserPlus className="w-32 h-32 text-blue-400 mb-8" />
-        <p className="text-5xl font-bold">{message}</p>
-        <p className="text-2xl text-gray-400 mt-4">{subMessage}</p>
-        <p className="text-sm text-gray-500 mt-8">キャンセルするにはEscキー</p>
-    </div>
-));
-RegisterScreen.displayName = 'RegisterScreen';
+TopBanner.displayName = 'TopBanner';
 
 
 const QrTimer = memo(({ qrExpiry, onExpire }: { qrExpiry: number, onExpire: () => void }) => {
@@ -630,53 +604,79 @@ export default function KioskPage() {
     };
   }, [supabase, qrToken, resetToIdle, kioskState]);
   
+  const checkinUrl = checkinToken ? `${process.env.NEXT_PUBLIC_APP_URL}/checkin/${checkinToken}` : null;
+  const registering = kioskState === 'face-register' || kioskState === 'face-capturing';
+
   return (
-    <div className="h-screen w-screen bg-gray-900 text-white flex items-center justify-center font-sans p-2">
-      <div className="w-full h-full bg-gray-900 border-4 border-gray-700 rounded-lg shadow-2xl overflow-hidden">
-        <div className="w-full h-full flex flex-col items-center justify-center">
-          {kioskState === 'idle' && <IdleScreen wbgtData={wbgtData} checkinToken={checkinToken} />}
-          {kioskState === 'success' && <SuccessScreen message={message} subMessage={subMessage} attendanceType={attendanceType} />}
-          {kioskState === 'error' && <ErrorScreen message={message} subMessage={subMessage} />}
-          {kioskState === 'register' && <RegisterScreen message={message} subMessage={subMessage} />}
-          {kioskState === 'qr' && qrToken && <QrScreen qrToken={qrToken} qrExpiry={qrExpiry} onExpire={resetToIdle} />}
-          {kioskState === 'face-register' && <FaceRegisterScreen faceRegToken={faceRegToken} inputValue={inputValue} />}
-          {kioskState === 'face-capturing' && (
-            <div className="text-center flex flex-col items-center">
-              <ScanFace className="w-32 h-32 text-green-400 mb-8 animate-pulse" />
-              <p className="text-4xl font-bold">{message || '顔を登録中…'}</p>
-              <p className="text-2xl text-gray-300 mt-4">{subMessage}</p>
+    <div className="h-screen w-screen bg-gray-900 text-white font-sans overflow-hidden relative flex flex-col">
+      {/* ヘッダー */}
+      <header className="flex justify-between items-start px-6 py-4 z-10">
+        <h1 className="text-2xl font-bold">STEM研究部 勤怠</h1>
+        <WbgtDisplay wbgt={wbgtData.wbgt} />
+      </header>
+
+      {/* メイン: 大画面カメラ + サイド情報。カメラは常時マウントしてWebRTCを維持。 */}
+      <div className="flex-1 flex items-center justify-center gap-8 px-6 pb-6 min-h-0">
+        <FaceAuth
+          ref={faceAuthRef}
+          onResult={handleFaceResult}
+          onRegisterDone={handleRegisterDone}
+          prominent={registering}
+          boxClassName="h-[78vh] w-[64vw] max-w-[1200px]"
+        />
+
+        <aside className="w-80 shrink-0 flex flex-col items-center gap-5 text-center">
+          <Clock />
+          {checkinUrl ? (
+            <div className="bg-white p-3 rounded-lg shadow-md">
+              <QRCode value={checkinUrl} size={150} />
+            </div>
+          ) : (
+            <div className="w-[174px] h-[174px] bg-gray-800 rounded-lg flex items-center justify-center">
+              <p className="text-gray-500 text-sm">QR生成中...</p>
             </div>
           )}
-          {(kioskState === 'loading' || kioskState === 'processing') && <ProcessingScreen state={kioskState} />}
-        </div>
-        
-        {(kioskState === 'input' || (kioskState === 'register' && inputValue)) && (
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-4xl mx-auto text-center">
-              <p className="text-lg text-gray-400 mb-2">読み取り中...</p>
-              <p className="text-2xl font-mono bg-gray-800 px-4 py-2 rounded-lg inline-block">{inputValue}</p>
-            </div>
-          </div>
-        )}
+          <p className="text-gray-300">カードがない方はQRで出退勤</p>
+          <p className="text-2xl font-semibold mt-2">NFCタッチ</p>
+          <p className="text-sm text-gray-500">
+            <span className="font-mono bg-gray-700 px-1.5 py-0.5 rounded">/</span> 新規カード登録 ・{' '}
+            <span className="font-mono bg-gray-700 px-1.5 py-0.5 rounded">;</span> 顔登録
+          </p>
+        </aside>
       </div>
 
-      {/* 顔認証カメラ。常時マウントしてWebRTC接続を維持する（状態遷移で再接続させない）。
-          顔登録/キャプチャ中は中央に大きく表示して位置合わせしやすくする。 */}
-      {(() => {
-        const prominent = kioskState === 'face-register' || kioskState === 'face-capturing';
-        return (
-          <div className={prominent
-            ? 'fixed inset-0 z-20 flex items-end justify-center pb-10 pointer-events-none'
-            : 'fixed bottom-4 right-4 z-20'}>
-            <FaceAuth
-              ref={faceAuthRef}
-              onResult={handleFaceResult}
-              onRegisterDone={handleRegisterDone}
-              prominent={prominent}
-            />
-          </div>
-        );
-      })()}
+      {/* 上部バナー: 打刻結果・処理中・入力中・登録中（カメラを隠さない） */}
+      <TopBanner
+        state={kioskState}
+        message={message}
+        subMessage={subMessage}
+        attendanceType={attendanceType}
+        inputValue={inputValue}
+      />
+
+      {/* 中央オーバーレイ: カード登録 / 顔登録の本人確認 / ローディング（背景を暗くして集中） */}
+      {(kioskState === 'register' || kioskState === 'qr' || kioskState === 'face-register' || kioskState === 'loading') && (
+        <div className="absolute inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-center justify-center">
+          {kioskState === 'register' && (
+            <div className="text-center flex flex-col items-center">
+              <UserPlus className="w-28 h-28 text-blue-400 mb-6" />
+              <p className="text-5xl font-bold">{message}</p>
+              <p className="text-2xl text-gray-300 mt-4">{subMessage}</p>
+              {inputValue && (
+                <p className="mt-4 text-2xl font-mono bg-gray-800 px-4 py-2 rounded-lg">{inputValue}</p>
+              )}
+              <p className="text-sm text-gray-500 mt-8">キャンセルするにはEscキー</p>
+            </div>
+          )}
+          {kioskState === 'qr' && qrToken && (
+            <QrScreen qrToken={qrToken} qrExpiry={qrExpiry} onExpire={resetToIdle} />
+          )}
+          {kioskState === 'face-register' && (
+            <FaceRegisterScreen faceRegToken={faceRegToken} inputValue={inputValue} />
+          )}
+          {kioskState === 'loading' && <ProcessingScreen state="loading" />}
+        </div>
+      )}
     </div>
   );
 }

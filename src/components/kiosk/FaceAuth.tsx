@@ -30,8 +30,10 @@ interface FaceAuthProps {
   onResult: (result: FaceAuthResult) => void;
   /** 顔登録完了を受け取る（event:"register_done" に正規化済み）。 */
   onRegisterDone?: (result: FaceAuthResult) => void;
-  /** true で大きく表示（顔登録モード中の位置合わせ用）。 */
+  /** true で枠を強調（顔登録モード中など）。 */
   prominent?: boolean;
+  /** 映像ボックスのサイズclass。未指定なら小（右下用）。 */
+  boxClassName?: string;
 }
 
 const RECONNECT_DELAY = 5000;
@@ -44,7 +46,7 @@ const RECONNECT_DELAY = 5000;
  * 打刻/登録のロジックは Python 側（doc/face-auth-protocol.md 参照）。
  */
 function FaceAuthInner(
-  { signalingUrl, onResult, onRegisterDone, prominent = false }: FaceAuthProps,
+  { signalingUrl, onResult, onRegisterDone, prominent = false, boxClassName }: FaceAuthProps,
   ref: React.Ref<FaceAuthHandle>,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -258,11 +260,11 @@ function FaceAuthInner(
     'no-camera': 'bg-red-500',
   };
 
-  const sizeClass = prominent ? 'w-[28rem] h-[21rem]' : 'w-40 h-30';
+  const sizeClass = boxClassName ?? 'w-40 h-30';
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className={`relative ${sizeClass} rounded-lg overflow-hidden border-2 ${prominent ? 'border-green-500' : 'border-gray-700'} bg-black transition-all`}>
+    <div className="flex flex-col items-center gap-2">
+      <div className={`relative ${sizeClass} rounded-2xl overflow-hidden border-4 ${prominent ? 'border-green-500' : 'border-gray-700'} bg-black transition-all shadow-xl`}>
         <video
           ref={videoRef}
           autoPlay
@@ -270,10 +272,10 @@ function FaceAuthInner(
           muted
           className="w-full h-full object-cover"
         />
-      </div>
-      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-        <span className={`inline-block w-2 h-2 rounded-full ${dotColor[connState]}`} />
-        <span>{statusLabel[connState]}</span>
+        <div className="absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-gray-200 bg-black/50 px-2 py-1 rounded-full">
+          <span className={`inline-block w-2 h-2 rounded-full ${dotColor[connState]}`} />
+          <span>{statusLabel[connState]}</span>
+        </div>
       </div>
     </div>
   );
