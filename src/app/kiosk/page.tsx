@@ -270,6 +270,8 @@ export default function KioskPage() {
   const [wbgtData, setWbgtData] = useState<WbgtData>({ wbgt: null, timestamp: null });
   const [checkinToken, setCheckinToken] = useState<string | null>(null);
   const [faceRegToken, setFaceRegToken] = useState<string | null>(null);
+  // 結果が更新されるたびに増やし、自動リセットタイマーを張り直すトリガにする
+  const [resultNonce, setResultNonce] = useState(0);
 
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -286,10 +288,12 @@ export default function KioskPage() {
     setKioskState('idle');
   }, []);
 
-  // 顔認証(Python)からの打刻結果。idle のときだけ反映し、
-  // カードスキャン・QR・登録など進行中のフローには割り込まない。
+  // 顔認証(Python)からの打刻結果。
+  // idle / 直前の結果表示中(success/error) なら上書き表示し、立て続けの打刻でも
+  // 全員分のバナーが順に出るようにする。カード入力中・処理中・登録中には割り込まない。
   const handleFaceResult = useCallback((result: FaceAuthResult) => {
-    if (kioskStateRef.current !== 'idle') return;
+    const s = kioskStateRef.current;
+    if (s !== 'idle' && s !== 'success' && s !== 'error') return;
 
     if (result.success && result.user) {
       setAttendanceType(result.type ?? null);
@@ -301,6 +305,8 @@ export default function KioskPage() {
       setSubMessage('');
       setKioskState('error');
     }
+    // 新しい結果が来たことを通知（success→success でも自動リセットを張り直す）
+    setResultNonce((n) => n + 1);
   }, []);
 
   // 顔登録: 本人確認できた user_id でキャプチャ開始を Python に指示
@@ -484,7 +490,8 @@ export default function KioskPage() {
     return () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
-  }, [kioskState, resetToIdle]);
+    // resultNonce を含めることで success→success の連続でもタイマーを張り直す
+  }, [kioskState, resultNonce, resetToIdle]);
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -645,8 +652,10 @@ export default function KioskPage() {
         </aside>
       </div>
 
-      {/* 上部バナー: 打刻結果・処理中・入力中・登録中（カメラを隠さない） */}
+      {/* 上部バナー: 打刻結果・処理中・入力中・登録中（カメラを隠さない）。
+          resultNonce をキーにして連続打刻のたびに再マウント＝再アニメーション。 */}
       <TopBanner
+        key={resultNonce}
         state={kioskState}
         message={message}
         subMessage={subMessage}
