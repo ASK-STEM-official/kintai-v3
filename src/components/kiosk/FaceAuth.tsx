@@ -270,7 +270,7 @@ function FaceAuthInner(
           autoPlay
           playsInline
           muted
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover -scale-x-100"
         />
         <div className="absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-gray-200 bg-black/50 px-2 py-1 rounded-full">
           <span className={`inline-block w-2 h-2 rounded-full ${dotColor[connState]}`} />
