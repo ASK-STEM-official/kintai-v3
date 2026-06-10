@@ -548,10 +548,12 @@ export default function KioskPage() {
         return;
       }
 
-      // 顔登録モード起動
-      if (e.key === ';' && kioskState !== 'face-register') {
+      // 顔登録モード起動。';' はどの状態でも必ず消費し、card id には絶対に混ぜない。
+      if (e.key === ';') {
         e.preventDefault();
-        enterFaceRegister();
+        if (kioskState !== 'face-register') {
+          enterFaceRegister();
+        }
         return;
       }
       
