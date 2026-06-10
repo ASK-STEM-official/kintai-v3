@@ -69,10 +69,12 @@ function FaceAuthInner(
     startRegister: (userId: string, count = DEFAULT_REGISTER_COUNT) => {
       const ch = controlChannelRef.current;
       if (!ch || ch.readyState !== 'open') {
-        console.warn('[FaceAuth] control channel not open');
+        console.warn('[FaceAuth] control channel not open (readyState=', ch?.readyState, ')');
         return false;
       }
-      ch.send(JSON.stringify({ action: 'register_start', user_id: userId, count }));
+      const payload = { action: 'register_start', user_id: userId, count };
+      console.log('[FaceAuth] -> control register_start', payload);
+      ch.send(JSON.stringify(payload));
       return true;
     },
   }), []);
@@ -108,7 +110,9 @@ function FaceAuthInner(
 
     // 結果受信用 "result"（Python→ブラウザ）
     const resultChannel = pc.createDataChannel('result');
+    resultChannel.onopen = () => console.log('[FaceAuth] result channel open');
     resultChannel.onmessage = (e) => {
+      console.log('[FaceAuth] <- result', e.data);
       try {
         const data = JSON.parse(e.data) as FaceAuthResult;
         if (data.event === 'register_done') {
@@ -122,7 +126,9 @@ function FaceAuthInner(
     };
 
     // 制御送信用 "control"（ブラウザ→Python）
-    controlChannelRef.current = pc.createDataChannel('control');
+    const controlChannel = pc.createDataChannel('control');
+    controlChannel.onopen = () => console.log('[FaceAuth] control channel open');
+    controlChannelRef.current = controlChannel;
 
     // カメラ track を送出
     streamRef.current.getVideoTracks().forEach((track) => {
@@ -131,6 +137,7 @@ function FaceAuthInner(
 
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
+      console.log('[FaceAuth] ICE state:', s);
       if (s === 'connected' || s === 'completed') {
         setConnState('connected');
       } else if (s === 'failed' || s === 'disconnected' || s === 'closed') {
