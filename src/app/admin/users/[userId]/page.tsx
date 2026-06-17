@@ -11,10 +11,11 @@ import {
 import { subDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import { redirect } from "next/navigation";
-import { calculateTotalActivityTime } from "@/app/actions";
+import { calculateTotalActivityTime, getFaceDataForUser } from "@/app/actions";
 import { convertGenerationToGrade, formatJst } from "@/lib/utils";
-import { Calendar as CalendarIcon, Clock, Percent, BarChart } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Percent, BarChart, ScanFace } from "lucide-react";
 import AttendanceCalendar from "@/app/dashboard/components/AttendanceCalendar";
+import FaceDataManager from "@/components/FaceDataManager";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -97,6 +98,9 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
     const teamsData = profile?.member_team_relations?.[0]?.teams;
     const teamName = Array.isArray(teamsData) ? teamsData[0]?.name : (teamsData as { name?: string } | null)?.name;
 
+    // 顔認証データ（service_role経由）
+    const faceData = await getFaceDataForUser(resolvedParams.userId);
+
   return (
     <div className="space-y-6">
         <div className="flex items-center gap-4">
@@ -163,6 +167,20 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
       </div>
       
       <div className="grid gap-6">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                    <CardTitle className="flex items-center gap-2"><ScanFace className="h-5 w-5" />顔認証データ</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <FaceDataManager
+                        count={faceData.count}
+                        latest={faceData.latest}
+                        adaptive={faceData.adaptive}
+                        mode="admin"
+                        userId={resolvedParams.userId}
+                    />
+                </CardContent>
+            </Card>
             <Card>
                 <CardHeader>
                     <CardTitle>最近の出退勤記録</CardTitle>

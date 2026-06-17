@@ -13,8 +13,10 @@ import { subDays } from "date-fns";
 import AttendanceCalendar from "./components/AttendanceCalendar";
 import ClientRelativeTime from "./components/ClientRelativeTime";
 import CardMigrationAlert from "./components/CardMigrationAlert";
-import { calculateTotalActivityTime } from "../actions";
+import { calculateTotalActivityTime, getMyFaceData } from "../actions";
 import { convertGenerationToGrade, formatJst } from "@/lib/utils";
+import { ScanFace } from "lucide-react";
+import FaceDataManager from "@/components/FaceDataManager";
 import { redirect } from "next/navigation";
 import { toZonedTime } from "date-fns-tz";
 import { requireAuth } from "@/lib/auth";
@@ -96,6 +98,9 @@ export default async function DashboardPage() {
     const teamsData = profile?.member_team_relations?.[0]?.teams;
     const teamName = Array.isArray(teamsData) ? teamsData[0]?.name : (teamsData as { name?: string } | null)?.name;
 
+    // 自分の顔認証データ
+    const myFaceData = await getMyFaceData();
+
   return (
     <div className="space-y-6">
         {!hasCardId && (
@@ -162,6 +167,19 @@ export default async function DashboardPage() {
       </div>
       <div className="grid gap-6">
         <div className="grid gap-6">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                    <CardTitle className="flex items-center gap-2"><ScanFace className="h-5 w-5" />顔認証データ</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <FaceDataManager
+                        count={myFaceData.count}
+                        latest={myFaceData.latest}
+                        adaptive={myFaceData.adaptive}
+                        mode="self"
+                    />
+                </CardContent>
+            </Card>
             <Card>
                 <CardHeader>
                     <CardTitle>最近の出退勤記録</CardTitle>

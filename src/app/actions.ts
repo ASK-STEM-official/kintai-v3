@@ -293,6 +293,63 @@ export async function markFaceRegSessionDone(token: string): Promise<void> {
     .eq('qr_token', token);
 }
 
+// --- 顔データ（face_encodings）管理 ---
+// face_encodings は service_role のみアクセス可のため admin クライアントで操作。
+// 自己操作は getOAuthUser の id に限定し、他人のデータは触れない。
+
+type FaceDataSummary = { count: number; latest: string | null; adaptive: number };
+
+async function getFaceDataByUserId(userId: string): Promise<FaceDataSummary> {
+  const supabase = await createSupabaseAdminClient();
+  const { data } = await (supabase.schema('attendance') as any)
+    .from('face_encodings')
+    .select('id, is_adaptive, created_at')
+    .eq('user_id', userId);
+  const rows: { is_adaptive: boolean; created_at: string }[] = data ?? [];
+  const latest = rows.reduce<string | null>((m, r) => (!m || r.created_at > m ? r.created_at : m), null);
+  return { count: rows.length, latest, adaptive: rows.filter((r) => r.is_adaptive).length };
+}
+
+async function deleteFaceDataByUserId(userId: string): Promise<{ success: boolean; message: string; deleted: number }> {
+  const supabase = await createSupabaseAdminClient();
+  const { data, error } = await (supabase.schema('attendance') as any)
+    .from('face_encodings')
+    .delete()
+    .eq('user_id', userId)
+    .select('id');
+  if (error) {
+    console.error('deleteFaceDataByUserId error:', error);
+    return { success: false, message: '顔データの削除に失敗しました。', deleted: 0 };
+  }
+  return { success: true, message: '顔データを削除しました。', deleted: (data ?? []).length };
+}
+
+/** 自分の顔データ件数（プロフィール表示用） */
+export async function getMyFaceData(): Promise<FaceDataSummary> {
+  const oauthUser = await getOAuthUser();
+  if (!oauthUser) return { count: 0, latest: null, adaptive: 0 };
+  return getFaceDataByUserId(oauthUser.id);
+}
+
+/** 自分の顔データを全削除（本人のみ） */
+export async function deleteMyFaceData() {
+  const oauthUser = await getOAuthUser();
+  if (!oauthUser) return { success: false, message: '認証されていません。', deleted: 0 };
+  return deleteFaceDataByUserId(oauthUser.id);
+}
+
+/** 指定ユーザーの顔データ件数（管理者用） */
+export async function getFaceDataForUser(userId: string): Promise<FaceDataSummary> {
+  await requireAdmin();
+  return getFaceDataByUserId(userId);
+}
+
+/** 指定ユーザーの顔データを全削除（管理者用） */
+export async function deleteFaceDataForUser(userId: string) {
+  await requireAdmin();
+  return deleteFaceDataByUserId(userId);
+}
+
 export async function getNickname(discordId: string): Promise<string | null> {
   await requireServerAuth();
   const { data } = await fetchMemberNickname(discordId);
