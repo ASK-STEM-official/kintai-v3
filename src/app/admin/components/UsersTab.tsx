@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link";
+import FaceDataRowButton from "./FaceDataRowButton";
 
 type UserWithDetails = {
     id: string;
@@ -487,6 +488,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                                             詳細
                                         </Link>
                                     </Button>
+                                    <FaceDataRowButton userId={user.id} displayName={user.display_name} />
                                     <Dialog open={editingUser?.id === user.id} onOpenChange={(open) => {
                                         if (!open) {
                                             setEditingUser(null);
