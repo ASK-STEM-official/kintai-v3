@@ -2,6 +2,31 @@
 
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 
+// Python → "detections" DataChannel で届く顔検出データ
+interface FaceDetection {
+  id: number;
+  box: { top: number; right: number; bottom: number; left: number };
+  name: string | null;
+  state: 'waiting' | 'matched' | 'unknown' | 'cooldown';
+  blinks: number;
+  blinks_req: number;
+  dist: number | null;
+}
+
+const STATE_COLOR: Record<string, string> = {
+  waiting: '#3b82f6',
+  matched: '#22c55e',
+  unknown: '#ef4444',
+  cooldown: '#a855f7',
+};
+
+const STATE_LABEL: Record<string, string> = {
+  waiting: '認識中',
+  matched: '認証済',
+  unknown: '不明',
+  cooldown: '処理済',
+};
+
 // Python から DataChannel "result" で届くメッセージ。
 // - 認証(打刻): {success, message, user:{display_name}, type}（event/status 無し）
 // - 顔登録(別接続 /register/offer): {status:"capturing"|"done", ...}
@@ -50,6 +75,8 @@ function FaceAuthInner(
   ref: React.Ref<FaceAuthHandle>,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const clearCanvasTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const registerPcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -66,6 +93,119 @@ function FaceAuthInner(
   const url = (signalingUrl
     || process.env.NEXT_PUBLIC_FACE_AUTH_URL
     || 'https://localhost:8000').replace(/\/$/, '');
+
+  const drawDetections = useCallback((faces: FaceDetection[]) => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const cW = Math.round(rect.width);
+    const cH = Math.round(rect.height);
+    if (canvas.width !== cW || canvas.height !== cH) {
+      canvas.width = cW;
+      canvas.height = cH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, cW, cH);
+    if (!faces.length) return;
+
+    // object-cover によるレンダリングサイズ計算
+    const vW = video.videoWidth || 640;
+    const vH = video.videoHeight || 480;
+    const scale = Math.max(cW / vW, cH / vH);
+    const rW = vW * scale;
+    const rH = vH * scale;
+    const oX = (cW - rW) / 2;
+    const oY = (cH - rH) / 2;
+
+    // 正規化座標 → canvas 座標（x はミラー補正で反転）
+    const tx = (nx: number) => cW - (nx * rW + oX);
+    const ty = (ny: number) => ny * rH + oY;
+
+    for (const face of faces) {
+      const color = STATE_COLOR[face.state] ?? '#3b82f6';
+
+      // Python の right/left を mirror 補正して swap
+      const bx1 = tx(face.box.right);
+      const bx2 = tx(face.box.left);
+      const by1 = ty(face.box.top);
+      const by2 = ty(face.box.bottom);
+      const bw = bx2 - bx1;
+      const bh = by2 - by1;
+
+      // ボックス
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bx1, by1, bw, bh);
+
+      // コーナー装飾
+      const cs = Math.min(bw, bh) * 0.18;
+      ctx.lineWidth = 3;
+      ([ [bx1, by1, 1, 1], [bx2, by1, -1, 1], [bx1, by2, 1, -1], [bx2, by2, -1, -1] ] as [number, number, number, number][])
+        .forEach(([x, y, dx, dy]) => {
+          ctx.beginPath();
+          ctx.moveTo(x + dx * cs, y);
+          ctx.lineTo(x, y);
+          ctx.lineTo(x, y + dy * cs);
+          ctx.stroke();
+        });
+
+      // ラベルテキスト
+      const mainText = face.name ?? STATE_LABEL[face.state] ?? '---';
+      const subText = `瞬目 ${face.blinks}/${face.blinks_req}${face.dist !== null ? `  d:${face.dist.toFixed(3)}` : ''}`;
+      const padX = 6, padY = 4;
+      const mainSize = 14, subSize = 11;
+      const lH1 = mainSize + padY, lH2 = subSize + padY;
+      const labelH = lH1 + lH2 + padY;
+
+      ctx.font = `bold ${mainSize}px monospace`;
+      const mainW = ctx.measureText(mainText).width;
+      ctx.font = `${subSize}px monospace`;
+      const subW = ctx.measureText(subText).width;
+      const labelW = Math.max(mainW, subW) + padX * 2;
+
+      const labelX = Math.max(0, Math.min(bx1, cW - labelW));
+      const labelY = by1 - labelH > 4 ? by1 - labelH : by2 + 2;
+
+      // ラベル背景（角丸）
+      ctx.fillStyle = `${color}cc`;
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(labelX + r, labelY);
+      ctx.lineTo(labelX + labelW - r, labelY);
+      ctx.quadraticCurveTo(labelX + labelW, labelY, labelX + labelW, labelY + r);
+      ctx.lineTo(labelX + labelW, labelY + labelH - r);
+      ctx.quadraticCurveTo(labelX + labelW, labelY + labelH, labelX + labelW - r, labelY + labelH);
+      ctx.lineTo(labelX + r, labelY + labelH);
+      ctx.quadraticCurveTo(labelX, labelY + labelH, labelX, labelY + labelH - r);
+      ctx.lineTo(labelX, labelY + r);
+      ctx.quadraticCurveTo(labelX, labelY, labelX + r, labelY);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${mainSize}px monospace`;
+      ctx.fillText(mainText, labelX + padX, labelY + lH1);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = `${subSize}px monospace`;
+      ctx.fillText(subText, labelX + padX, labelY + lH1 + lH2);
+
+      // トラックIDバッジ
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(bx1 + 11, by1 + 11, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${face.id}`, bx1 + 11, by1 + 15);
+      ctx.textAlign = 'left';
+    }
+  }, []);
 
   const cleanupRegisterPc = useCallback(() => {
     if (registerPcRef.current) {
@@ -182,6 +322,24 @@ function FaceAuthInner(
       }
     };
 
+    // 検出オーバーレイ受信用 "detections"（Python → ブラウザ）
+    const detectionsChannel = pc.createDataChannel('detections');
+    detectionsChannel.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (Array.isArray(data.faces)) {
+          drawDetections(data.faces);
+          if (clearCanvasTimerRef.current) clearTimeout(clearCanvasTimerRef.current);
+          // 検出が途切れたら 600ms でクリア
+          clearCanvasTimerRef.current = setTimeout(() => {
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+          }, 600);
+        }
+      } catch { /* noop */ }
+    };
+
     // カメラ track を送出
     streamRef.current.getVideoTracks().forEach((track) => {
       pc.addTrack(track, streamRef.current!);
@@ -232,6 +390,7 @@ function FaceAuthInner(
     return () => {
       closedRef.current = true;
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      if (clearCanvasTimerRef.current) clearTimeout(clearCanvasTimerRef.current);
       cleanupPc();
       cleanupRegisterPc();
       if (streamRef.current) {
@@ -272,7 +431,11 @@ function FaceAuthInner(
           muted
           className="w-full h-full object-cover -scale-x-100"
         />
-        <div className="absolute bottom-2 left-2 flex items-center gap-1.5 text-xs text-gray-200 bg-black/50 px-2 py-1 rounded-full">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+        />
+        <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 text-xs text-gray-200 bg-black/50 px-2 py-1 rounded-full">
           <span className={`inline-block w-2 h-2 rounded-full ${dotColor[connState]}`} />
           <span>{statusLabel[connState]}</span>
         </div>
