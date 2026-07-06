@@ -56,6 +56,7 @@ export default function LogsTab({
           <TabsContent value="auto_logout">
              <Card>
                 <CardContent className="pt-6">
+                    <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -81,6 +82,7 @@ export default function LogsTab({
                             ))}
                         </TableBody>
                     </Table>
+                    </div>
                 </CardContent>
              </Card>
           </TabsContent>

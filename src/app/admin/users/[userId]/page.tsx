@@ -110,7 +110,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                 </Link>
             </Button>
             <div className="flex-1">
-                <h1 className="text-3xl font-bold">{displayName}さんの出席詳細</h1>
+                <h1 className="text-xl sm:text-3xl font-bold">{displayName}さんの出席詳細</h1>
                 <p className="text-muted-foreground">
                     {teamName && <Badge variant="secondary" className="mr-2">{teamName}</Badge>}
                     {profile?.generation && convertGenerationToGrade(profile.generation)}
@@ -186,6 +186,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                     <CardTitle>最近の出退勤記録</CardTitle>
                 </CardHeader>
                 <CardContent>
+                    <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -212,6 +213,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                             )}
                         </TableBody>
                     </Table>
+                    </div>
                 </CardContent>
             </Card>
              <Card>

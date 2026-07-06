@@ -318,9 +318,9 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                 </CardDescription>
             </CardHeader>
             <CardContent>
-            <div className="mb-4 space-y-4">
-                <div className="flex items-center gap-4">
-                    <div className="relative flex-grow">
+            <div className="mb-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[180px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="表示名、カードID、学籍番号で検索..."
@@ -343,15 +343,15 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                             {isLoadingRealNames ? '取得中...' : '本名を表示'}
                         </label>
                     </div>
-                    <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
-                        <Filter className="mr-2 h-4 w-4" />
-                        {showFilters ? 'フィルターを隠す' : 'フィルター'}
+                    <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
+                        <Filter className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{showFilters ? 'フィルターを隠す' : 'フィルター'}</span>
                     </Button>
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="outline">
-                                <RefreshCw className={`mr-2 h-4 w-4 ${isUpdatingNames ? 'animate-spin' : ''}`} />
-                                Discordユーザー名を更新
+                            <Button variant="outline" size="sm">
+                                <RefreshCw className={`h-4 w-4 sm:mr-2 ${isUpdatingNames ? 'animate-spin' : ''}`} />
+                                <span className="hidden sm:inline">Discordユーザー名を更新</span>
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -439,6 +439,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                     </Card>
                 )}
             </div>
+            <div className="overflow-x-auto">
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -566,6 +567,7 @@ export default function UsersTab({ users: initialUsers, teams, currentUser }: Us
                     })}
                 </TableBody>
             </Table>
+            </div>
             </CardContent>
         </Card>
   )

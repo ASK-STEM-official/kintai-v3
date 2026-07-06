@@ -37,7 +37,7 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">管理者ダッシュボード</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">管理者ダッシュボード</h1>
         <p className="text-muted-foreground">ユーザーとシステムを管理します。</p>
       </div>
 
@@ -54,22 +54,22 @@ export default async function AdminPage() {
       )}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users">
-            <User className="mr-2 h-4 w-4" />
-            ユーザー管理
+            <User className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">ユーザー管理</span>
           </TabsTrigger>
-           <TabsTrigger value="temp_registrations">
-            <FilePenLine className="mr-2 h-4 w-4" />
-            仮登録管理
+          <TabsTrigger value="temp_registrations">
+            <FilePenLine className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">仮登録管理</span>
           </TabsTrigger>
           <TabsTrigger value="logs">
-            <History className="mr-2 h-4 w-4" />
-            ログ
+            <History className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">ログ</span>
           </TabsTrigger>
-           <TabsTrigger value="system">
-            <Power className="mr-2 h-4 w-4" />
-            システム
+          <TabsTrigger value="system">
+            <Power className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">システム</span>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="users">

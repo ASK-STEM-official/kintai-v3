@@ -107,12 +107,12 @@ export default async function DashboardPage() {
             <CardMigrationAlert />
         )}
         
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
             <div>
-                <h1 className="text-3xl font-bold">マイダッシュボード</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold">マイダッシュボード</h1>
                 <p className="text-muted-foreground">こんにちは, {displayName}さん！</p>
             </div>
-            <div className="text-right">
+            <div className="flex sm:flex-col sm:text-right items-center sm:items-end gap-2">
                 {teamName && <Badge variant="secondary">{teamName}</Badge>}
                 <p className="text-sm text-muted-foreground">{profile?.generation ? convertGenerationToGrade(profile.generation) : ''}</p>
             </div>
@@ -185,6 +185,7 @@ export default async function DashboardPage() {
                     <CardTitle>最近の出退勤記録</CardTitle>
                 </CardHeader>
                 <CardContent>
+                    <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -211,6 +212,7 @@ export default async function DashboardPage() {
                             )}
                         </TableBody>
                     </Table>
+                    </div>
                 </CardContent>
             </Card>
              <Card>
