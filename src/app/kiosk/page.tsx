@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { createTempRegistration, createFaceRegSession, resolveUserByCard, getFaceRegSession, markFaceRegSessionDone } from '@/app/actions';
+import { createTempRegistration, createFaceRegSession, resolveUserByCard, getFaceRegSession, markFaceRegSessionDone, pruneOldFaceData } from '@/app/actions';
 import Clock from '@/components/kiosk/Clock';
 import { Bell, LogIn, LogOut, XCircle, UserPlus, Copy, Thermometer, ScanFace } from 'lucide-react';
 import QRCode from 'react-qr-code';
@@ -283,6 +283,8 @@ export default function KioskPage() {
   useEffect(() => { kioskStateRef.current = kioskState; }, [kioskState]);
   const faceRegTokenRef = useRef<string | null>(null);
   useEffect(() => { faceRegTokenRef.current = faceRegToken; }, [faceRegToken]);
+  const faceCapUserIdRef = useRef<string | null>(null);
+  const faceCapStartedAtRef = useRef<string | null>(null);
 
   useEffect(() => {
     setKioskState('idle');
@@ -311,6 +313,8 @@ export default function KioskPage() {
 
   // 顔登録: 本人確認できた user_id でキャプチャ開始を Python に指示
   const beginFaceCapture = useCallback((userId: string, displayName?: string) => {
+    faceCapUserIdRef.current = userId;
+    faceCapStartedAtRef.current = new Date().toISOString();
     const ok = faceAuthRef.current?.startRegister(userId);
     if (!ok) {
       setMessage('カメラに接続できていません');
@@ -339,6 +343,14 @@ export default function KioskPage() {
     if (token) markFaceRegSessionDone(token).catch(() => {});
     setFaceRegToken(null);
     if (result.success) {
+      // 今回の登録より前にあった古いデータを削除（上書き更新）
+      const userId = faceCapUserIdRef.current;
+      const beforeTs = faceCapStartedAtRef.current;
+      if (userId && beforeTs) {
+        pruneOldFaceData(userId, beforeTs)
+          .then(({ deleted }) => { if (deleted > 0) console.log(`[face] pruned ${deleted} old encodings`); })
+          .catch(() => {});
+      }
       setAttendanceType('in');
       setMessage('顔を登録しました');
       setSubMessage(`${result.count ?? 0}枚のデータを保存しました`);

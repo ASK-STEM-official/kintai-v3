@@ -350,6 +350,28 @@ export async function deleteFaceDataForUser(userId: string) {
   return deleteFaceDataByUserId(userId);
 }
 
+/**
+ * 指定タイムスタンプより古い顔データを削除する（キオスク顔登録の上書き用）。
+ * beforeTimestamp より古い行だけ消すので、Python が直前に insert した新データは残る。
+ */
+export async function pruneOldFaceData(
+  userId: string,
+  beforeTimestamp: string,
+): Promise<{ deleted: number }> {
+  const supabase = await createSupabaseAdminClient();
+  const { data, error } = await (supabase.schema('attendance') as any)
+    .from('face_encodings')
+    .delete()
+    .eq('user_id', userId)
+    .lt('created_at', beforeTimestamp)
+    .select('id');
+  if (error) {
+    console.error('pruneOldFaceData error:', error);
+    return { deleted: 0 };
+  }
+  return { deleted: (data ?? []).length };
+}
+
 export async function getNickname(discordId: string): Promise<string | null> {
   await requireServerAuth();
   const { data } = await fetchMemberNickname(discordId);
