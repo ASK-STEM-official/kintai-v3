@@ -130,11 +130,6 @@ const TopBanner = memo(({ state, message, subMessage, attendanceType, inputValue
     bg = 'bg-gray-700';
     title = '読み取り中…';
     sub = inputValue;
-  } else if (state === 'face-capturing') {
-    bg = 'bg-green-700';
-    icon = <ScanFace className="w-12 h-12 animate-pulse" />;
-    title = message || '顔を登録中…';
-    sub = subMessage;
   } else {
     return null;
   }
@@ -273,8 +268,12 @@ export default function KioskPage() {
   // 結果が更新されるたびに増やし、自動リセットタイマーを張り直すトリガにする
   const [resultNonce, setResultNonce] = useState(0);
 
+  const [captureCountdown, setCaptureCountdown] = useState<number | null>(null);
+  const [captureProgress, setCaptureProgress] = useState<{ captured: number; total: number } | null>(null);
+
   const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const faceAuthRef = useRef<FaceAuthHandle>(null);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -311,29 +310,46 @@ export default function KioskPage() {
     setResultNonce((n) => n + 1);
   }, []);
 
-  // 顔登録: 本人確認できた user_id でキャプチャ開始を Python に指示
+  // 顔登録: 5秒カウントダウン後に Python にキャプチャ開始を指示
   const beginFaceCapture = useCallback((userId: string, displayName?: string) => {
     faceCapUserIdRef.current = userId;
     faceCapStartedAtRef.current = new Date().toISOString();
-    const ok = faceAuthRef.current?.startRegister(userId);
-    if (!ok) {
-      setMessage('カメラに接続できていません');
-      setSubMessage('しばらく待ってから、もう一度お試しください');
-      setKioskState('error');
-      return;
-    }
     setInputValue('');
     setMessage(displayName ? `${displayName} さん` : '');
-    setSubMessage('カメラを見てください（登録中…）');
+    setSubMessage('カメラを見てください');
     setKioskState('face-capturing');
+    setCaptureCountdown(5);
+    setCaptureProgress(null);
 
-    // Python から完了通知が来ない場合のタイムアウト
-    if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
-    processingTimerRef.current = setTimeout(() => {
-      setMessage('顔の登録がタイムアウトしました');
-      setSubMessage('カメラに顔が写っているか確認して、もう一度お試しください');
-      setKioskState('error');
-    }, PROCESSING_TIMEOUT);
+    let remaining = 5;
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(countdownTimerRef.current!);
+        countdownTimerRef.current = null;
+        setCaptureCountdown(null);
+        const ok = faceAuthRef.current?.startRegister(userId);
+        if (!ok) {
+          setMessage('カメラに接続できていません');
+          setSubMessage('しばらく待ってから、もう一度お試しください');
+          setKioskState('error');
+          return;
+        }
+        if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+        processingTimerRef.current = setTimeout(() => {
+          setMessage('顔の登録がタイムアウトしました');
+          setSubMessage('カメラに顔が写っているか確認して、もう一度お試しください');
+          setKioskState('error');
+        }, PROCESSING_TIMEOUT);
+      } else {
+        setCaptureCountdown(remaining);
+      }
+    }, 1000);
+  }, []);
+
+  const handleCaptureProgress = useCallback((captured: number, total: number) => {
+    setCaptureProgress({ captured, total });
   }, []);
 
   // Python からの顔登録完了
@@ -403,6 +419,8 @@ export default function KioskPage() {
   const resetToIdle = useCallback(() => {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = null;
     setKioskState('idle');
     setInputValue('');
     setMessage('');
@@ -410,6 +428,8 @@ export default function KioskPage() {
     setQrToken(null);
     setFaceRegToken(null);
     setAttendanceType(null);
+    setCaptureCountdown(null);
+    setCaptureProgress(null);
   }, []);
 
   // 顔登録モードに入る（QR経路用セッションを発行）
@@ -640,8 +660,11 @@ export default function KioskPage() {
           ref={faceAuthRef}
           onResult={handleFaceResult}
           onRegisterDone={handleRegisterDone}
+          onCaptureProgress={handleCaptureProgress}
           prominent={registering}
           boxClassName="h-[78vh] w-[64vw] max-w-[1200px]"
+          countdown={captureCountdown}
+          captureProgress={captureProgress}
         />
 
         <aside className="w-80 shrink-0 flex flex-col items-center gap-5 text-center">

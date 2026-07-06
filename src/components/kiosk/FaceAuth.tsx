@@ -55,10 +55,16 @@ interface FaceAuthProps {
   onResult: (result: FaceAuthResult) => void;
   /** 顔登録完了を受け取る（event:"register_done" に正規化済み）。 */
   onRegisterDone?: (result: FaceAuthResult) => void;
+  /** キャプチャ進捗（Python からの capturing 通知を転送）。 */
+  onCaptureProgress?: (captured: number, total: number) => void;
   /** true で枠を強調（顔登録モード中など）。 */
   prominent?: boolean;
   /** 映像ボックスのサイズclass。未指定なら小（右下用）。 */
   boxClassName?: string;
+  /** カウントダウン秒数。>0 のとき "N秒後に撮影" オーバーレイを表示。 */
+  countdown?: number | null;
+  /** キャプチャ進捗。表示中はプログレスバーを重ねる。 */
+  captureProgress?: { captured: number; total: number } | null;
 }
 
 const RECONNECT_DELAY = 5000;
@@ -71,7 +77,7 @@ const RECONNECT_DELAY = 5000;
  * 打刻/登録のロジックは Python 側（doc/face-auth-protocol.md 参照）。
  */
 function FaceAuthInner(
-  { signalingUrl, onResult, onRegisterDone, prominent = false, boxClassName }: FaceAuthProps,
+  { signalingUrl, onResult, onRegisterDone, onCaptureProgress, prominent = false, boxClassName, countdown, captureProgress }: FaceAuthProps,
   ref: React.Ref<FaceAuthHandle>,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -87,8 +93,10 @@ function FaceAuthInner(
   // コールバックは再生成されうるので ref で最新を参照する
   const onResultRef = useRef(onResult);
   const onRegisterDoneRef = useRef(onRegisterDone);
+  const onCaptureProgressRef = useRef(onCaptureProgress);
   useEffect(() => { onResultRef.current = onResult; }, [onResult]);
   useEffect(() => { onRegisterDoneRef.current = onRegisterDone; }, [onRegisterDone]);
+  useEffect(() => { onCaptureProgressRef.current = onCaptureProgress; }, [onCaptureProgress]);
 
   const url = (signalingUrl
     || process.env.NEXT_PUBLIC_FACE_AUTH_URL
@@ -228,6 +236,7 @@ function FaceAuthInner(
         const data = JSON.parse(e.data);
         if (data.status === 'capturing') {
           lastCaptured = data.captured ?? lastCaptured;
+          onCaptureProgressRef.current?.(lastCaptured, data.total ?? 5);
         } else if (data.status === 'done') {
           onRegisterDoneRef.current?.({
             event: 'register_done',
@@ -435,6 +444,43 @@ function FaceAuthInner(
           ref={canvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
         />
+
+        {/* カウントダウンオーバーレイ */}
+        {countdown != null && countdown > 0 && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/75 gap-3">
+            <p className="text-white/80 text-lg font-medium tracking-wide">カメラを見てください</p>
+            <span
+              key={countdown}
+              className="text-white font-bold leading-none animate-bounce"
+              style={{ fontSize: 'clamp(4rem, 12vw, 9rem)' }}
+            >
+              {countdown}
+            </span>
+            <p className="text-white/60 text-base">秒後に撮影開始</p>
+          </div>
+        )}
+
+        {/* キャプチャ進捗オーバーレイ */}
+        {captureProgress != null && (countdown == null || countdown <= 0) && (
+          <div className="absolute inset-x-0 bottom-0 z-20 bg-black/70 flex flex-col items-center gap-2 py-3 px-4">
+            <p className="text-white text-sm font-semibold tracking-wide">
+              撮影中 {captureProgress.captured} / {captureProgress.total}
+            </p>
+            <div className="flex gap-2">
+              {Array.from({ length: captureProgress.total }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`block rounded-full transition-all duration-300 ${
+                    i < captureProgress.captured
+                      ? 'w-4 h-4 bg-green-400 shadow-[0_0_6px_2px_rgba(74,222,128,0.7)]'
+                      : 'w-3 h-3 bg-white/30 mt-0.5'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 text-xs text-gray-200 bg-black/50 px-2 py-1 rounded-full">
           <span className={`inline-block w-2 h-2 rounded-full ${dotColor[connState]}`} />
           <span>{statusLabel[connState]}</span>
