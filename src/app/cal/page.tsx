@@ -23,7 +23,7 @@ const DEFAULTS: Config = {
   cooldown: 5,
   blinks_required: 1,
   ear_threshold: 0.25,
-  scale_factor: 0.25,
+  scale_factor: 0.5,
   alpha: 0.05,
   clahe: 1.0,
   clahe_clip: 3.0,
