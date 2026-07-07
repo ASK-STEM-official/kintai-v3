@@ -21,7 +21,7 @@ interface Config {
 const DEFAULTS: Config = {
   threshold: 0.40,
   cooldown: 5,
-  blinks_required: 1,
+  blinks_required: 2,
   ear_threshold: 0.25,
   scale_factor: 0.5,
   alpha: 0.05,
