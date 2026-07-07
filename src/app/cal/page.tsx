@@ -15,17 +15,19 @@ interface Config {
   alpha: number;
   clahe: number;
   clahe_clip: number;
+  upsample: number;
 }
 
 const DEFAULTS: Config = {
-  threshold: 0.45,
+  threshold: 0.40,
   cooldown: 5,
-  blinks_required: 2,
+  blinks_required: 1,
   ear_threshold: 0.25,
   scale_factor: 0.25,
   alpha: 0.05,
   clahe: 1.0,
-  clahe_clip: 2.0,
+  clahe_clip: 3.0,
+  upsample: 2,
 };
 
 interface ParamRowProps {
@@ -192,6 +194,16 @@ export default function CalPage() {
 
             <section className="space-y-4">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">パフォーマンス</h2>
+              <ParamRow
+                label="アップサンプル回数"
+                description="1=高速・近距離のみ、2=遠距離対応（Piでは重くなる）"
+                value={cfg.upsample}
+                min={1}
+                max={3}
+                step={1}
+                onChange={(v) => set('upsample', v)}
+                format={(v) => `${v}回`}
+              />
               <ParamRow
                 label="スケール係数"
                 description="検出処理前にリサイズする倍率。小さいほど高速・低精度"
