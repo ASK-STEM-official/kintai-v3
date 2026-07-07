@@ -11,6 +11,7 @@ interface FaceDetection {
   blinks: number;
   blinks_req: number;
   dist: number | null;
+  cooldown_remaining?: number | null;
 }
 
 const STATE_COLOR: Record<string, string> = {
@@ -166,7 +167,13 @@ function FaceAuthInner(
         });
 
       // ラベルテキスト
-      const mainText = face.name ?? STATE_LABEL[face.state] ?? '---';
+      const cdSec = face.cooldown_remaining != null ? Math.ceil(face.cooldown_remaining) : null;
+      const stateLabel = face.state === 'cooldown' && cdSec != null
+        ? `CD ${cdSec}s`
+        : (STATE_LABEL[face.state] ?? '---');
+      const mainText = face.name
+        ? (face.state === 'cooldown' && cdSec != null ? `${face.name}  CD ${cdSec}s` : face.name)
+        : stateLabel;
       const subText = `瞬目 ${face.blinks}/${face.blinks_req}${face.dist !== null ? `  d:${face.dist.toFixed(3)}` : ''}`;
       const padX = 6, padY = 4;
       const mainSize = 14, subSize = 11;
