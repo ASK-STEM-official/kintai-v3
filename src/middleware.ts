@@ -31,7 +31,8 @@ export async function middleware(request: NextRequest) {
                        request.nextUrl.pathname.startsWith('/auth/') ||
                        request.nextUrl.pathname.startsWith('/checkin') ||
                        request.nextUrl.pathname.startsWith('/register') ||
-                       request.nextUrl.pathname.startsWith('/api/');
+                       request.nextUrl.pathname.startsWith('/api/') ||
+                       request.nextUrl.pathname.startsWith('/cal');
   
   if (!isPublicPath) {
     const oauthUserId = request.cookies.get('oauth_user_id')?.value;

@@ -44,6 +44,8 @@ export interface FaceAuthResult {
 export interface FaceAuthHandle {
   /** 顔登録を開始する。/register/offer に user_id 付きの別接続を張る。成功可否(カメラ準備済みか)を返す。 */
   startRegister: (userId: string) => boolean;
+  /** Python側の設定を更新する。config DataChannel が開いていれば送信。 */
+  sendConfig: (cfg: Record<string, number>) => void;
 }
 
 type ConnState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'no-camera';
@@ -84,6 +86,7 @@ function FaceAuthInner(
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const clearCanvasTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const configChannelRef = useRef<RTCDataChannel | null>(null);
   const registerPcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -279,7 +282,7 @@ function FaceAuthInner(
     }
   }, [url, cleanupRegisterPc]);
 
-  // 親へ公開する命令: 顔登録開始
+  // 親へ公開する命令: 顔登録開始 / 設定送信
   useImperativeHandle(ref, () => ({
     startRegister: (userId: string) => {
       if (!streamRef.current) {
@@ -289,6 +292,15 @@ function FaceAuthInner(
       runRegister(userId);
       return true;
     },
+    sendConfig: (cfg: Record<string, number>) => {
+      const ch = configChannelRef.current;
+      if (ch && ch.readyState === 'open') {
+        ch.send(JSON.stringify({ type: 'config', ...cfg }));
+        console.log('[FaceAuth] -> config', cfg);
+      } else {
+        console.warn('[FaceAuth] config channel not open');
+      }
+    },
   }), [runRegister]);
 
   const cleanupPc = useCallback(() => {
@@ -296,6 +308,7 @@ function FaceAuthInner(
       try { pcRef.current.close(); } catch { /* noop */ }
       pcRef.current = null;
     }
+    configChannelRef.current = null;
   }, []);
 
   const connect = useCallback(async () => {
@@ -330,6 +343,11 @@ function FaceAuthInner(
         console.error('[FaceAuth] invalid result payload:', err);
       }
     };
+
+    // 設定送信用 "config"（ブラウザ → Python）
+    const configChannel = pc.createDataChannel('config');
+    configChannel.onopen = () => console.log('[FaceAuth] config channel open');
+    configChannelRef.current = configChannel;
 
     // 検出オーバーレイ受信用 "detections"（Python → ブラウザ）
     const detectionsChannel = pc.createDataChannel('detections');
