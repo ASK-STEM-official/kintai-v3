@@ -27,7 +27,7 @@ const DEFAULTS: Config = {
   alpha: 0.05,
   clahe: 1.0,
   clahe_clip: 3.0,
-  upsample: 2,
+  upsample: 1,
 };
 
 interface ParamRowProps {
