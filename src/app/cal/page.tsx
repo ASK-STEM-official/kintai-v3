@@ -13,6 +13,8 @@ interface Config {
   ear_threshold: number;
   scale_factor: number;
   alpha: number;
+  clahe: number;
+  clahe_clip: number;
 }
 
 const DEFAULTS: Config = {
@@ -22,6 +24,8 @@ const DEFAULTS: Config = {
   ear_threshold: 0.25,
   scale_factor: 0.25,
   alpha: 0.05,
+  clahe: 1.0,
+  clahe_clip: 2.0,
 };
 
 interface ParamRowProps {
@@ -160,6 +164,29 @@ export default function CalPage() {
                 step={1}
                 onChange={(v) => set('cooldown', v)}
                 format={(v) => `${v}s`}
+              />
+            </section>
+
+            <section className="space-y-4">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">逆光補正</h2>
+              <ParamRow
+                label="CLAHE 有効"
+                description="1.0 = 有効、0.0 = 無効。逆光・暗所での認識精度改善"
+                value={cfg.clahe}
+                min={0.0}
+                max={1.0}
+                step={1.0}
+                onChange={(v) => set('clahe', v)}
+                format={(v) => v > 0 ? 'ON' : 'OFF'}
+              />
+              <ParamRow
+                label="CLAHE クリップ限界"
+                description="コントラスト強調の上限。大きいほど強調が強い（2.0 が標準）"
+                value={cfg.clahe_clip}
+                min={0.5}
+                max={8.0}
+                step={0.5}
+                onChange={(v) => set('clahe_clip', v)}
               />
             </section>
 
