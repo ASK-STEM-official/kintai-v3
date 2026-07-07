@@ -19,7 +19,7 @@ const DEFAULTS: Config = {
   threshold: 0.45,
   cooldown: 5,
   blinks_required: 2,
-  ear_threshold: 0.21,
+  ear_threshold: 0.15,
   scale_factor: 0.25,
   alpha: 0.05,
 };
