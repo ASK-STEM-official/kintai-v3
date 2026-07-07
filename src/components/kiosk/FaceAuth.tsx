@@ -7,6 +7,7 @@ interface FaceDetection {
   id: number;
   box: { top: number; right: number; bottom: number; left: number };
   name: string | null;
+  candidate?: string | null;
   state: 'waiting' | 'matched' | 'unknown' | 'cooldown';
   blinks: number;
   blinks_req: number;
@@ -171,8 +172,9 @@ function FaceAuthInner(
       const stateLabel = face.state === 'cooldown' && cdSec != null
         ? `CD ${cdSec}s`
         : (STATE_LABEL[face.state] ?? '---');
-      const mainText = face.name
-        ? (face.state === 'cooldown' && cdSec != null ? `${face.name}  CD ${cdSec}s` : face.name)
+      const displayName = face.name ?? face.candidate ?? null;
+      const mainText = displayName
+        ? (face.state === 'cooldown' && cdSec != null ? `${displayName}  CD ${cdSec}s` : displayName)
         : stateLabel;
       const subText = `瞬目 ${face.blinks}/${face.blinks_req}${face.dist !== null ? `  d:${face.dist.toFixed(3)}` : ''}`;
       const padX = 6, padY = 4;
