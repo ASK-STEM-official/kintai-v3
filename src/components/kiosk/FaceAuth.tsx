@@ -94,6 +94,7 @@ function FaceAuthInner(
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedRef = useRef(false);
   const [connState, setConnState] = useState<ConnState>('idle');
+  const [registerMsg, setRegisterMsg] = useState<string | null>(null);
 
   // コールバックは再生成されうるので ref で最新を参照する
   const onResultRef = useRef(onResult);
@@ -232,6 +233,7 @@ function FaceAuthInner(
       try { registerPcRef.current.close(); } catch { /* noop */ }
       registerPcRef.current = null;
     }
+    setRegisterMsg(null);
   }, []);
 
   // 顔登録: /register/offer に user_id 付きの別接続を張る
@@ -248,8 +250,10 @@ function FaceAuthInner(
         const data = JSON.parse(e.data);
         if (data.status === 'capturing') {
           lastCaptured = data.captured ?? lastCaptured;
+          setRegisterMsg(null);
           onCaptureProgressRef.current?.(lastCaptured, data.total ?? 5);
         } else if (data.status === 'done') {
+          setRegisterMsg(null);
           onRegisterDoneRef.current?.({
             event: 'register_done',
             success: true,
@@ -257,6 +261,10 @@ function FaceAuthInner(
             message: data.message || '登録しました',
           });
           cleanupRegisterPc();
+        } else if (data.status === 'waiting') {
+          setRegisterMsg(data.message ?? '一人で映ってください');
+        } else if (data.status === 'no_face') {
+          setRegisterMsg('カメラに顔を映してください');
         }
       } catch (err) {
         console.error('[FaceAuth] invalid register payload:', err);
@@ -327,7 +335,14 @@ function FaceAuthInner(
 
     try {
       if (!streamRef.current) {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        streamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 15, max: 15 },
+          },
+          audio: false,
+        });
         if (videoRef.current) {
           videoRef.current.srcObject = streamRef.current;
         }
@@ -484,6 +499,13 @@ function FaceAuthInner(
               {countdown}
             </span>
             <p className="text-white/60 text-base">秒後に撮影開始</p>
+          </div>
+        )}
+
+        {/* 登録待機メッセージオーバーレイ（複数人検出 / 顔なし） */}
+        {registerMsg != null && (countdown == null || countdown <= 0) && captureProgress == null && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60">
+            <p className="text-white text-base font-semibold text-center px-4">{registerMsg}</p>
           </div>
         )}
 
