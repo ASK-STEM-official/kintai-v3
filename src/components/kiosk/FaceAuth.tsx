@@ -335,8 +335,23 @@ function FaceAuthInner(
 
     try {
       if (!streamRef.current) {
+        // 露出固定用の仮想カメラ(v4l2loopback, ラベル"FaceAuthCam")があれば優先的に選択する。
+        // 実カメラを直接開くとブラウザ側の読み取り処理で露出設定が毎フレームリセットされる
+        // 問題があるため、露出を固定した中継プロセス経由の仮想デバイスを使う。
+        let deviceId: string | undefined;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const faceAuthCam = devices.find(
+            (d) => d.kind === 'videoinput' && d.label.includes('FaceAuthCam')
+          );
+          deviceId = faceAuthCam?.deviceId;
+        } catch {
+          // enumerateDevices 失敗時はデフォルトカメラにフォールバック
+        }
+
         streamRef.current = await navigator.mediaDevices.getUserMedia({
           video: {
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
             width: { ideal: 1280 },
             height: { ideal: 720 },
             frameRate: { ideal: 15, max: 15 },
@@ -502,15 +517,17 @@ function FaceAuthInner(
           </div>
         )}
 
-        {/* 登録待機メッセージオーバーレイ（複数人検出 / 顔なし） */}
-        {registerMsg != null && (countdown == null || countdown <= 0) && captureProgress == null && (
+        {/* 登録待機メッセージオーバーレイ（複数人検出 / 顔なし）。
+            captureProgress は 'capturing' 時にしか更新されず waiting/no_face 遷移時に
+            残り続けるため、registerMsg を優先表示する。 */}
+        {registerMsg != null && (countdown == null || countdown <= 0) && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60">
             <p className="text-white text-base font-semibold text-center px-4">{registerMsg}</p>
           </div>
         )}
 
         {/* キャプチャ進捗オーバーレイ */}
-        {captureProgress != null && (countdown == null || countdown <= 0) && (
+        {captureProgress != null && registerMsg == null && (countdown == null || countdown <= 0) && (
           <div className="absolute inset-x-0 bottom-0 z-20 bg-black/70 flex flex-col items-center gap-2 py-3 px-4">
             <p className="text-white text-sm font-semibold tracking-wide">
               撮影中 {captureProgress.captured} / {captureProgress.total}
